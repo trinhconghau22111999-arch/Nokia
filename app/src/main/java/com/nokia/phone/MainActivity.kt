@@ -37,7 +37,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import kotlin.math.abs
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -182,6 +187,9 @@ fun Phone() {
         }
     }
 
+    val tapItem: (Int) -> Unit = { i -> sel = i; press("OK") }
+    val scroll: (Int) -> Unit = { d -> press(if (d > 0) "DOWN" else "UP") }
+
     BackHandler { back() }
 
     val left = when (screen) {
@@ -196,7 +204,7 @@ fun Phone() {
                 .clip(RoundedCornerShape(44.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF4469BC), Color(0xFF223C78))))
                 .border(3.dp, Color(0xFF16254A), RoundedCornerShape(44.dp))
-                .padding(horizontal = 18.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
                 .focusRequester(focus).focusable()
                 .onKeyEvent { e ->
                     if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
@@ -214,16 +222,15 @@ fun Phone() {
                     true
                 }
         ) {
-            // Loa + logo
-            Box(Modifier.fillMaxWidth().weight(0.05f), Alignment.Center) {
-                Box(Modifier.width(80.dp).height(7.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF111B36)))
+            // Loa + logo (mỏng gọn)
+            Box(Modifier.fillMaxWidth(), Alignment.Center) {
+                Box(Modifier.width(70.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF111B36)))
             }
-            Box(Modifier.fillMaxWidth().weight(0.05f), Alignment.Center) {
-                Text("NOKIA", color = Color(0xFFE6ECFA), fontWeight = FontWeight.Black, fontSize = 16.sp, letterSpacing = 4.sp)
-            }
+            Text("NOKIA", Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 5.dp), textAlign = TextAlign.Center,
+                color = Color(0xFFE6ECFA), fontWeight = FontWeight.Black, fontSize = 12.sp, letterSpacing = 4.sp)
 
             // Màn hình LCD nhỏ (phần duy nhất thay đổi)
-            Box(Modifier.fillMaxWidth().weight(0.30f).clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
+            Box(Modifier.fillMaxWidth().weight(0.36f).clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
                 Column(Modifier.fillMaxSize().background(LCD)) {
                     Row(Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 1.dp)) {
                         Text("▂▄▆", color = LCD, fontFamily = MONO, fontSize = 11.sp)
@@ -234,21 +241,30 @@ fun Phone() {
                     }
                     Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp)) {
                         when (screen) {
-                            "home" -> Column(Modifier.fillMaxSize(), Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
+                            "home" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
                                 Text("NOKIA", color = INK, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                 Text(now.take(5), color = INK, fontSize = 40.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                 Text(dial, color = INK, fontSize = 20.sp, fontFamily = MONO, maxLines = 1, overflow = TextOverflow.Clip)
                             }
-                            "menu" -> Lines(MENU.map { it.first }, sel)
-                            "apps" -> Lines(apps.map { it.label }.ifEmpty { listOf("(trống)") }, sel)
+                            "menu" -> Lines(MENU.map { it.first }, sel, tapItem, scroll)
+                            "apps" -> Lines(apps.map { it.label }.ifEmpty { listOf("(trống)") }, sel, tapItem, scroll)
                             "clock" -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                                 Text(now, color = INK, fontSize = 34.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                             }
-                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher"), sel)
+                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher"), sel, tapItem, scroll)
                             "snake" -> Column(Modifier.fillMaxSize()) {
                                 Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}",
                                     color = INK, fontFamily = MONO, fontSize = 12.sp)
-                                Canvas(Modifier.weight(1f).fillMaxWidth()) {
+                                Canvas(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
+                                    detectTapGestures { o ->
+                                        if (snake.dead) snake.reset() else {
+                                            val dx = o.x - size.width / 2f
+                                            val dy = o.y - size.height / 2f
+                                            if (abs(dx) > abs(dy)) snake.turn(if (dx > 0) 1 to 0 else -1 to 0)
+                                            else snake.turn(if (dy > 0) 0 to 1 else 0 to -1)
+                                        }
+                                    }
+                                }) {
                                     val c = minOf(size.width / snake.w, size.height / snake.h)
                                     snake.body.forEach { (x, y) -> drawRect(INK, Offset(x * c, y * c), Size(c - 2, c - 2)) }
                                     drawRect(INK, Offset(snake.food.first * c + c / 4, snake.food.second * c + c / 4), Size(c / 2, c / 2))
@@ -256,10 +272,14 @@ fun Phone() {
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp)) {
-                        Text(left, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
-                        Spacer(Modifier.weight(1f))
-                        Text(right, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
+                    Row(Modifier.fillMaxWidth()) {
+                        Box(Modifier.weight(1f).clickable { press("SOFTL") }.padding(horizontal = 6.dp, vertical = 5.dp)) {
+                            Text(left, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
+                        }
+                        Box(Modifier.weight(1f).clickable { press("SOFTR") }.padding(horizontal = 6.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.CenterEnd) {
+                            Text(right, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
+                        }
                     }
                 }
             }
@@ -271,13 +291,20 @@ fun Phone() {
 }
 
 @Composable
-fun Lines(items: List<String>, sel: Int) {
-    val visible = 5
+fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -> Unit) {
+    val visible = 6
     val start = (sel - visible / 2).coerceIn(0, maxOf(0, items.size - visible))
-    Column(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().fillMaxHeight().pointerInput(Unit) {
+        var acc = 0f
+        detectVerticalDragGestures(onDragEnd = { acc = 0f }) { _, d ->
+            acc += d
+            if (acc < -45f) { onScroll(1); acc = 0f } else if (acc > 45f) { onScroll(-1); acc = 0f }
+        }
+    }) {
         items.drop(start).take(visible).forEachIndexed { n, t ->
             val i = start + n
-            Text(t, Modifier.fillMaxWidth().background(if (i == sel) INK else LCD).padding(horizontal = 6.dp, vertical = 4.dp),
+            Text(t, Modifier.fillMaxWidth().clickable { onTap(i) }
+                .background(if (i == sel) INK else LCD).padding(horizontal = 6.dp, vertical = 4.dp),
                 color = if (i == sel) LCD else INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
                 fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -299,7 +326,7 @@ fun K(label: String, mod: Modifier, sub: String = "", bg: Color = KEY, fg: Color
 fun ColumnScope.Keys(p: (String) -> Unit) {
     val dk = Color(0xFFB4BCCB)
     // Cụm điều hướng đối xứng: [Phím mềm T / Gọi] [D-pad] [Phím mềm P / Tắt]
-    Row(Modifier.fillMaxWidth().weight(0.23f)) {
+    Row(Modifier.fillMaxWidth().weight(0.22f)) {
         Column(Modifier.weight(1f).fillMaxHeight()) {
             K("●", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("SOFTL") }
             K("Gọi", Modifier.weight(1f).fillMaxWidth(), bg = Color(0xFF2E9E4F), fg = Color.White, size = 16) { p("CALL") }
@@ -319,7 +346,7 @@ fun ColumnScope.Keys(p: (String) -> Unit) {
         }
     }
     // Bàn phím số
-    Column(Modifier.fillMaxWidth().weight(0.38f)) {
+    Column(Modifier.fillMaxWidth().weight(0.36f)) {
         listOf("123", "456", "789", "*0#").forEach { row ->
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 row.forEach { ch ->
