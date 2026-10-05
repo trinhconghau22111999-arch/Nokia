@@ -19,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -31,6 +32,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
@@ -198,13 +202,11 @@ fun Phone() {
     }
     val right = when (screen) { "home" -> if (dial.isEmpty()) "" else "Xóa"; else -> "Về" }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF0E1420)).displayCutoutPadding().padding(8.dp)) {
+    Column(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize()
-                .clip(RoundedCornerShape(44.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF4469BC), Color(0xFF223C78))))
-                .border(3.dp, Color(0xFF16254A), RoundedCornerShape(44.dp))
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp)
                 .focusRequester(focus).focusable()
                 .onKeyEvent { e ->
                     if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
@@ -230,7 +232,7 @@ fun Phone() {
                 color = Color(0xFFE6ECFA), fontWeight = FontWeight.Black, fontSize = 12.sp, letterSpacing = 4.sp)
 
             // Màn hình LCD nhỏ (phần duy nhất thay đổi)
-            Box(Modifier.fillMaxWidth().weight(0.36f).clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
+            Box(Modifier.fillMaxWidth().weight(0.33f).clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
                 Column(Modifier.fillMaxSize().background(LCD)) {
                     Row(Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 1.dp)) {
                         Text("▂▄▆", color = LCD, fontFamily = MONO, fontSize = 11.sp)
@@ -311,13 +313,43 @@ fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -
     }
 }
 
+val GREEN = Color(0xFF2E9E4F)
+val RED = Color(0xFFC0392B)
+const val CALL_PATH = "M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"
+
+/** Biểu tượng ống nghe điện thoại; hangUp = xoay 135° thành nút tắt máy. */
 @Composable
-fun K(label: String, mod: Modifier, sub: String = "", bg: Color = KEY, fg: Color = KEYTXT, size: Int = 18, onClick: () -> Unit) {
-    Box(mod.padding(3.dp).clip(RoundedCornerShape(16.dp)).background(bg).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, color = fg, fontWeight = FontWeight.Bold, fontSize = size.sp)
-            if (sub.isNotEmpty()) Text(" $sub", color = fg, fontSize = 9.sp)
+fun PhoneIcon(color: Color, hangUp: Boolean, modifier: Modifier = Modifier) {
+    val path = remember { PathParser().parsePathString(CALL_PATH).toPath() }
+    Canvas(modifier) {
+        val k = size.minDimension / 24f
+        withTransform({
+            if (hangUp) rotate(135f, Offset(size.width / 2f, size.height / 2f))
+            scale(k, k, Offset.Zero)
+        }) { drawPath(path, color) }
+    }
+}
+
+@Composable
+fun K(mod: Modifier, shape: Shape = RoundedCornerShape(16.dp), bg: Color = KEY,
+      onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(mod.padding(3.dp).clip(shape).background(bg).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center) { content() }
+}
+
+@Composable
+fun Glyph(t: String, size: Int = 18, fg: Color = KEYTXT) {
+    Text(t, color = fg, fontWeight = FontWeight.Bold, fontSize = size.sp)
+}
+
+/** Phím số: chữ số lớn, các chữ cái đậm nằm ngay bên dưới. */
+@Composable
+fun NumKey(d: String, sub: String, mod: Modifier, onClick: () -> Unit) {
+    K(mod, onClick = onClick) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(d, color = KEYTXT, fontWeight = FontWeight.Black, fontSize = 26.sp)
+            Text(if (sub.isEmpty()) " " else sub, color = KEYTXT, fontWeight = FontWeight.ExtraBold,
+                fontSize = 12.sp, letterSpacing = 1.sp)
         }
     }
 }
@@ -325,33 +357,50 @@ fun K(label: String, mod: Modifier, sub: String = "", bg: Color = KEY, fg: Color
 @Composable
 fun ColumnScope.Keys(p: (String) -> Unit) {
     val dk = Color(0xFFB4BCCB)
-    // Cụm điều hướng đối xứng: [Phím mềm T / Gọi] [D-pad] [Phím mềm P / Tắt]
-    Row(Modifier.fillMaxWidth().weight(0.22f)) {
+    // [Phím mềm dẹt + Gọi] [D-pad tròn] [Phím mềm dẹt + Tắt]
+    Row(Modifier.fillMaxWidth().weight(0.27f)) {
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            K("●", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("SOFTL") }
-            K("Gọi", Modifier.weight(1f).fillMaxWidth(), bg = Color(0xFF2E9E4F), fg = Color.White, size = 16) { p("CALL") }
-        }
-        Column(Modifier.weight(1.5f).fillMaxHeight()) {
-            K("▲", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("UP") }
-            Row(Modifier.weight(1f).fillMaxWidth()) {
-                K("◀", Modifier.weight(1f).fillMaxHeight(), size = 14) { p("LEFT") }
-                K("OK", Modifier.weight(1.25f).fillMaxHeight(), bg = dk, size = 15) { p("OK") }
-                K("▶", Modifier.weight(1f).fillMaxHeight(), size = 14) { p("RIGHT") }
+            K(Modifier.fillMaxWidth().height(34.dp), shape = RoundedCornerShape(12.dp), onClick = { p("SOFTL") }) { Glyph("●", 12) }
+            Spacer(Modifier.weight(0.15f))
+            K(Modifier.weight(1f).fillMaxWidth(), onClick = { p("CALL") }) {
+                PhoneIcon(GREEN, false, Modifier.size(38.dp))
             }
-            K("▼", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("DOWN") }
+        }
+        BoxWithConstraints(Modifier.weight(1.6f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+            val c = minOf(maxWidth, maxHeight) / 3
+            Column(Modifier.size(c * 3)) {
+                Row(Modifier.height(c)) {
+                    Spacer(Modifier.size(c))
+                    K(Modifier.size(c), shape = CircleShape, onClick = { p("UP") }) { Glyph("▲", 14) }
+                    Spacer(Modifier.size(c))
+                }
+                Row(Modifier.height(c)) {
+                    K(Modifier.size(c), shape = CircleShape, onClick = { p("LEFT") }) { Glyph("◀", 14) }
+                    K(Modifier.size(c), shape = CircleShape, bg = dk, onClick = { p("OK") }) { Glyph("OK", 15) }
+                    K(Modifier.size(c), shape = CircleShape, onClick = { p("RIGHT") }) { Glyph("▶", 14) }
+                }
+                Row(Modifier.height(c)) {
+                    Spacer(Modifier.size(c))
+                    K(Modifier.size(c), shape = CircleShape, onClick = { p("DOWN") }) { Glyph("▼", 14) }
+                    Spacer(Modifier.size(c))
+                }
+            }
         }
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            K("●", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("SOFTR") }
-            K("Tắt", Modifier.weight(1f).fillMaxWidth(), bg = Color(0xFFC0392B), fg = Color.White, size = 16) { p("END") }
+            K(Modifier.fillMaxWidth().height(34.dp), shape = RoundedCornerShape(12.dp), onClick = { p("SOFTR") }) { Glyph("●", 12) }
+            Spacer(Modifier.weight(0.15f))
+            K(Modifier.weight(1f).fillMaxWidth(), onClick = { p("END") }) {
+                PhoneIcon(RED, true, Modifier.size(38.dp))
+            }
         }
     }
     // Bàn phím số
-    Column(Modifier.fillMaxWidth().weight(0.36f)) {
+    Column(Modifier.fillMaxWidth().weight(0.40f)) {
         listOf("123", "456", "789", "*0#").forEach { row ->
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 row.forEach { ch ->
                     val s = ch.toString()
-                    K(s, Modifier.weight(1f).fillMaxHeight(), sub = LETTERS[s] ?: "", size = 22) { p(s) }
+                    NumKey(s, LETTERS[s] ?: "", Modifier.weight(1f).fillMaxHeight()) { p(s) }
                 }
             }
         }
