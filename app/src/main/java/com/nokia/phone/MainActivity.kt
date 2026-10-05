@@ -2,12 +2,17 @@ package com.nokia.phone
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -83,7 +88,24 @@ class Snake {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        hideBars()
         setContent { Phone() }
+    }
+
+    private fun hideBars() {
+        val c = WindowInsetsControllerCompat(window, window.decorView)
+        c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        c.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideBars()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -168,7 +190,7 @@ fun Phone() {
     }
     val right = when (screen) { "home" -> if (dial.isEmpty()) "" else "Xóa"; else -> "Về" }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF0E1420)).systemBarsPadding().padding(8.dp)) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF0E1420)).displayCutoutPadding().padding(8.dp)) {
         Column(
             Modifier.fillMaxSize()
                 .clip(RoundedCornerShape(44.dp))
@@ -201,7 +223,7 @@ fun Phone() {
             }
 
             // Màn hình LCD nhỏ (phần duy nhất thay đổi)
-            Box(Modifier.fillMaxWidth().weight(0.29f).clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
+            Box(Modifier.fillMaxWidth().weight(0.30f).clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
                 Column(Modifier.fillMaxSize().background(LCD)) {
                     Row(Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 1.dp)) {
                         Text("▂▄▆", color = LCD, fontFamily = MONO, fontSize = 11.sp)
@@ -275,28 +297,29 @@ fun K(label: String, mod: Modifier, sub: String = "", bg: Color = KEY, fg: Color
 
 @Composable
 fun ColumnScope.Keys(p: (String) -> Unit) {
-    // Phím mềm + phím điều hướng
-    Row(Modifier.fillMaxWidth().weight(0.17f)) {
-        K("●", Modifier.weight(1f).fillMaxHeight(), size = 14) { p("SOFTL") }
-        Column(Modifier.weight(1.6f).fillMaxHeight()) {
+    val dk = Color(0xFFB4BCCB)
+    // Cụm điều hướng đối xứng: [Phím mềm T / Gọi] [D-pad] [Phím mềm P / Tắt]
+    Row(Modifier.fillMaxWidth().weight(0.23f)) {
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            K("●", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("SOFTL") }
+            K("Gọi", Modifier.weight(1f).fillMaxWidth(), bg = Color(0xFF2E9E4F), fg = Color.White, size = 16) { p("CALL") }
+        }
+        Column(Modifier.weight(1.5f).fillMaxHeight()) {
             K("▲", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("UP") }
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 K("◀", Modifier.weight(1f).fillMaxHeight(), size = 14) { p("LEFT") }
-                K("OK", Modifier.weight(1.2f).fillMaxHeight(), bg = Color(0xFFB4BCCB), size = 14) { p("OK") }
+                K("OK", Modifier.weight(1.25f).fillMaxHeight(), bg = dk, size = 15) { p("OK") }
                 K("▶", Modifier.weight(1f).fillMaxHeight(), size = 14) { p("RIGHT") }
             }
             K("▼", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("DOWN") }
         }
-        K("●", Modifier.weight(1f).fillMaxHeight(), size = 14) { p("SOFTR") }
-    }
-    // Gọi / Tắt
-    Row(Modifier.fillMaxWidth().weight(0.08f)) {
-        K("Gọi", Modifier.weight(1f).fillMaxHeight(), bg = Color(0xFF2E9E4F), fg = Color.White, size = 15) { p("CALL") }
-        Spacer(Modifier.weight(1.2f))
-        K("Tắt", Modifier.weight(1f).fillMaxHeight(), bg = Color(0xFFC0392B), fg = Color.White, size = 15) { p("END") }
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            K("●", Modifier.weight(1f).fillMaxWidth(), size = 14) { p("SOFTR") }
+            K("Tắt", Modifier.weight(1f).fillMaxWidth(), bg = Color(0xFFC0392B), fg = Color.White, size = 16) { p("END") }
+        }
     }
     // Bàn phím số
-    Column(Modifier.fillMaxWidth().weight(0.36f)) {
+    Column(Modifier.fillMaxWidth().weight(0.38f)) {
         listOf("123", "456", "789", "*0#").forEach { row ->
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 row.forEach { ch ->
