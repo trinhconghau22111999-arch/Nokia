@@ -39,8 +39,8 @@ import kotlin.math.roundToInt
 
 /** Các mục trong Menu > Cài đặt (thứ tự hiển thị). */
 val SETTINGS = listOf(
-    "launcher", "sound", "wifi", "sim", "airplane", "hotspot", "brightness",
-    "battery", "storage", "accounts", "power", "bt", "dialer", "smsapp", "reset"
+    "sound", "wifi", "sim", "airplane", "hotspot", "brightness",
+    "battery", "storage", "accounts", "power", "bt", "dialer", "smsapp", "reset", "launcher"
 )
 
 /** Các màn hình có số liệu thay đổi theo thời gian -> làm tươi mỗi giây. */
