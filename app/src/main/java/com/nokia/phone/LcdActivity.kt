@@ -145,12 +145,13 @@ fun NokiaFrame(
             LcdFontScale {
             Column(Modifier.fillMaxSize().background(LCD).statusBarsPadding()) {
                 Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), content = lcd)
+                // Hai nút mềm chỉ rộng vừa chữ (vùng bấm/nền sáng khi chạm không kéo dài nửa màn hình)
                 Row(Modifier.fillMaxWidth()) {
-                    Box(Modifier.weight(1f).clickable { p("SOFTL") }.padding(horizontal = 6.dp, vertical = 5.dp)) {
+                    Box(Modifier.clickable { p("SOFTL") }.padding(horizontal = 8.dp, vertical = 5.dp)) {
                         Text(left, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
                     }
-                    Box(Modifier.weight(1f).clickable { p("SOFTR") }.padding(horizontal = 6.dp, vertical = 5.dp),
-                        contentAlignment = Alignment.CenterEnd) {
+                    Spacer(Modifier.weight(1f))
+                    Box(Modifier.clickable { p("SOFTR") }.padding(horizontal = 8.dp, vertical = 5.dp)) {
                         Text(right, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
                     }
                 }
