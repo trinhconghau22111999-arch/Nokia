@@ -57,7 +57,7 @@ class KeypadActivity : ComponentActivity() {
             else -> {                                                    // nửa trên là app khác
                 val svc = NokiaAccessibilityService.instance
                 if (svc != null) svc.control(k)
-                else Toast.makeText(this, "Hãy bật dịch vụ Trợ năng Nokia Phone để điều khiển app", Toast.LENGTH_SHORT).show()
+                else Toast.makeText(this, "Hãy bật dịch vụ Trợ năng phonecuibap để điều khiển app", Toast.LENGTH_SHORT).show()
             }
         }
     }

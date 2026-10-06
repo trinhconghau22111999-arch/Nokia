@@ -8,11 +8,29 @@ android {
     namespace = "com.nokia.phone"
     compileSdk = 34
     defaultConfig {
-        applicationId = "com.nokia.phone"
+        applicationId = "phone.noki.nguoigia"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 2)
         versionName = "1.1"
+    }
+
+    val releaseKs = System.getenv("KEYSTORE_PATH")?.takeIf { file(it).exists() }
+    signingConfigs {
+        if (releaseKs != null) {
+            create("release") {
+                storeFile = file(releaseKs)
+                storePassword = System.getenv("KEYSTORE_PASS")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASS")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            // Cùng một khóa ký cho mọi bản build => cài đè lên bản cũ được, không cần gỡ
+            signingConfig = if (releaseKs != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

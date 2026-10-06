@@ -536,7 +536,7 @@ fun Phone() {
     }
     fun toggleSplit() {
         val svc = NokiaAccessibilityService.instance
-        if (svc == null) Toast.makeText(ctx, "Hãy bật dịch vụ Trợ năng Nokia Phone trước", Toast.LENGTH_LONG).show()
+        if (svc == null) Toast.makeText(ctx, "Hãy bật dịch vụ Trợ năng phonecuibap trước", Toast.LENGTH_LONG).show()
         else { NokiaState.splitTried = true; svc.toggleSplit() }
     }
     fun dialScreen(n: String) = launch(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(n))))
@@ -569,7 +569,7 @@ fun Phone() {
         if (r.resultCode == Activity.RESULT_OK) {
             val uri = Sound.picked(r.data)
             if (!Sound.setRingtone(ctx, uri)) {
-                Toast.makeText(ctx, "Hãy cấp quyền \"Sửa đổi cài đặt hệ thống\" cho Nokia Phone", Toast.LENGTH_LONG).show()
+                Toast.makeText(ctx, "Hãy cấp quyền \"Sửa đổi cài đặt hệ thống\" cho phonecuibap", Toast.LENGTH_LONG).show()
                 try {
                     ctx.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:" + ctx.packageName))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -653,7 +653,7 @@ fun Phone() {
         else Wifi.askPassword(ctx, n.ssid) { pass -> connectWifi(n, pass) }   // hiện bàn phím ảo của máy
     }
     fun askWriteSettings() {
-        Toast.makeText(ctx, "Hãy cấp quyền \"Sửa đổi cài đặt hệ thống\" cho Nokia Phone", Toast.LENGTH_LONG).show()
+        Toast.makeText(ctx, "Hãy cấp quyền \"Sửa đổi cài đặt hệ thống\" cho phonecuibap", Toast.LENGTH_LONG).show()
         try {
             ctx.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:" + ctx.packageName))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -696,7 +696,7 @@ fun Phone() {
         PowerStore.save(ctx, s)
         PowerStore.schedule(ctx, s)
         if (pEdit == 0 && eon && NokiaAccessibilityService.instance == null)
-            Toast.makeText(ctx, "Cần bật dịch vụ Trợ năng Nokia Phone để tự tắt màn hình", Toast.LENGTH_LONG).show()
+            Toast.makeText(ctx, "Cần bật dịch vụ Trợ năng phonecuibap để tự tắt màn hình", Toast.LENGTH_LONG).show()
         screen = "power"
         sel = pEdit
     }
@@ -719,7 +719,7 @@ fun Phone() {
     val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val dialerReq = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         dialerOn = isDefaultDialer(ctx)
-        Toast.makeText(ctx, if (dialerOn) "Đã đặt Nokia Phone làm ứng dụng gọi điện" else "Chưa đặt làm ứng dụng gọi điện", Toast.LENGTH_SHORT).show()
+        Toast.makeText(ctx, if (dialerOn) "Đã đặt phonecuibap làm ứng dụng gọi điện" else "Chưa đặt làm ứng dụng gọi điện", Toast.LENGTH_SHORT).show()
         if (dialerOn && Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -1276,7 +1276,7 @@ fun Phone() {
                                 Text("Khôi phục cài đặt gốc?", color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                                     fontFamily = MONO, textAlign = TextAlign.Center)
                                 Spacer(Modifier.height(10.dp))
-                                Text("Xóa toàn bộ dữ liệu của riêng app Nokia Phone (báo thức, nhạc báo thức, quyền đã cấp). Máy của bạn không bị ảnh hưởng.",
+                                Text("Xóa toàn bộ dữ liệu của riêng app phonecuibap (báo thức, nhạc báo thức, quyền đã cấp). Máy của bạn không bị ảnh hưởng.",
                                     color = INK, fontSize = 14.sp, fontFamily = MONO, textAlign = TextAlign.Center)
                             }
                             "contacts" -> if (contacts.isEmpty())

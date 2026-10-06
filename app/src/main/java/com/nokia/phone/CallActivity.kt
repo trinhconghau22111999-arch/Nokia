@@ -36,7 +36,7 @@ private const val M_PICK = 4     // chọn SIM để gọi
 /**
  * Giao diện gọi và nhận cuộc gọi theo kiểu Nokia: toàn bộ thông tin nằm trong màn hình LCD,
  * điều khiển bằng phím Gọi (nghe), phím Tắt (cúp/từ chối), phím mềm và D-pad.
- * Chỉ nhận cuộc gọi khi Nokia Phone được đặt làm ứng dụng gọi điện mặc định.
+ * Chỉ nhận cuộc gọi khi phonecuibap được đặt làm ứng dụng gọi điện mặc định.
  */
 class CallActivity : LcdActivity() {
     override val overLock = true

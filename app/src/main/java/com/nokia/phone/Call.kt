@@ -27,7 +27,7 @@ data class CallEnd(val name: String, val number: String, val text: String, val d
 
 /**
  * Trạng thái cuộc gọi dùng chung giữa NokiaInCallService (nhận sự kiện từ hệ thống)
- * và CallActivity (màn hình LCD). Chỉ hoạt động khi Nokia Phone là "ứng dụng gọi điện mặc định".
+ * và CallActivity (màn hình LCD). Chỉ hoạt động khi phonecuibap là "ứng dụng gọi điện mặc định".
  */
 object CallHub {
     var calls by mutableStateOf(listOf<Call>())
