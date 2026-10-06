@@ -1055,9 +1055,9 @@ fun Phone() {
                                 if (gIds.isNotEmpty()) gIdx = (gIdx + d + gIds.size) % gIds.size
                             }
                             "recorder" -> Column(Modifier.fillMaxSize()) {
+                                Hint("OK: ghi/nghe   #: xóa")
+                                Spacer(Modifier.height(4.dp))
                                 Box(Modifier.weight(1f)) { Lines(recLines(recs, playing, recTick), sel, tapItem, scroll) }
-                                Text("OK: ghi/nghe   #: xóa", Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 2.dp),
-                                    color = LCD, fontFamily = MONO, fontSize = 12.sp, maxLines = 1)
                             }
                             "recording" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.Center, Alignment.CenterHorizontally) {
                                 Text(if ((recTick / 2) % 2 == 0) "● ĐANG GHI ÂM" else "○ ĐANG GHI ÂM",

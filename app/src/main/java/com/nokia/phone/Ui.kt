@@ -50,11 +50,22 @@ fun Msg(t: String) {
     }
 }
 
+/** Tiêu đề màn hình: chữ to, đậm, có khoảng cách với nội dung bên dưới. */
 @Composable
 fun Head(t: String) {
-    Text(t, Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 2.dp),
-        color = LCD, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = MONO,
-        maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Column(Modifier.fillMaxWidth()) {
+        Text(t, Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 5.dp),
+            color = LCD, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = MONO,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** Dòng hướng dẫn phím: đặt ngay dưới tiêu đề, chữ thường (không tô nền) để khỏi nhầm với mục đang chọn. */
+@Composable
+fun Hint(t: String) {
+    Text(t, Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp),
+        color = INK, fontFamily = MONO, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 /** Đọc toàn bộ một tin nhắn (cuộn được). */

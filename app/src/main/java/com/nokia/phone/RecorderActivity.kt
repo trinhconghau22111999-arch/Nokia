@@ -167,14 +167,13 @@ class RecorderActivity : LcdActivity() {
             }
             else -> Column(Modifier.fillMaxSize()) {
                 Head("GHI ÂM  (${recs.size})")
+                val pr = playingRec()
+                Hint(if (pr != null) progress(pr, t) else "OK: ghi/nghe   #: xóa")
+                Spacer(Modifier.height(4.dp))
                 Box(Modifier.weight(1f)) {
                     Lines(recLines(recs, playing, t), sel,
                         { i -> sel = i; onKey("OK") }, { d -> onKey(if (d > 0) "DOWN" else "UP") })
                 }
-                val pr = playingRec()
-                Text(if (pr != null) progress(pr, t) else "OK: ghi/nghe   #: xóa",
-                    Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 2.dp),
-                    color = LCD, fontFamily = MONO, fontSize = 12.sp, maxLines = 1)
             }
         }
     }
