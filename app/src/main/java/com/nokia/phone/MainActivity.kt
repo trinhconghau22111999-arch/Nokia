@@ -183,6 +183,13 @@ fun Phone() {
             try { ctx.startActivity(i) } catch (_: Exception) {}
         }
     }
+    fun showDiag() {
+        val r = lcdRect
+        val msg = "${Build.MANUFACTURER} ${Build.MODEL} | Android ${Build.VERSION.SDK_INT}\n" +
+            "cua so tu do: " + freeformOn() + "\n" +
+            "khung LCD: " + (r?.let { "${it.left.roundToInt()},${it.top.roundToInt()} - ${it.right.roundToInt()},${it.bottom.roundToInt()}" } ?: "null")
+        Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+    }
     fun dialScreen(n: String) = launch(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(n))))
     fun placeCall(n: String) {
         try {
@@ -210,7 +217,7 @@ fun Phone() {
 
     fun press(k: String) {
         if (buzz) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 3; else -> 1 }
+        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 4; else -> 1 }
         when (k) {
             "UP", "LEFT" -> if (screen == "snake") snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
                 else sel = (sel - 1 + size) % size
@@ -229,7 +236,8 @@ fun Phone() {
                 "settings" -> when (sel) {
                     0 -> buzz = !buzz
                     1 -> launch(Intent(Settings.ACTION_HOME_SETTINGS))
-                    else -> launch(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), false)
+                    2 -> launch(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), false)
+                    else -> showDiag()
                 }
                 "snake" -> if (snake.dead) snake.reset()
             }
@@ -317,7 +325,7 @@ fun Phone() {
                             "clock" -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                                 Text(now, color = INK, fontSize = 34.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                             }
-                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher", "Cửa sổ nhỏ (dev)"), sel, tapItem, scroll)
+                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher", "Cửa sổ nhỏ (dev)", "Thông tin máy"), sel, tapItem, scroll)
                             "snake" -> Column(Modifier.fillMaxSize()) {
                                 Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}",
                                     color = INK, fontFamily = MONO, fontSize = 12.sp)
