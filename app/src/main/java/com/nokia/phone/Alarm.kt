@@ -11,6 +11,8 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import android.os.Build
 import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
@@ -97,6 +99,24 @@ object AlarmStore {
     fun cancelSnooze(ctx: Context) {
         (ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(snoozePi(ctx))
     }
+}
+
+/**
+ * Máy hay chặn báo thức vì tối ưu pin. Lần đầu đặt báo thức thì xin cho app được chạy nền
+ * (hộp thoại hệ thống, chỉ hỏi một lần). Trả về true nếu đã mở hộp thoại.
+ */
+fun askIgnoreBatteryOnce(ctx: Context): Boolean {
+    if (Build.VERSION.SDK_INT < 23) return false
+    val sp = ctx.getSharedPreferences("alarms", Context.MODE_PRIVATE)
+    if (sp.getBoolean("askedBattery", false)) return false
+    val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
+    if (pm.isIgnoringBatteryOptimizations(ctx.packageName)) return false
+    sp.edit().putBoolean("askedBattery", true).apply()
+    return try {
+        ctx.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            .setData(Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (_: Exception) { false }
 }
 
 /** Nhãn giờ hiển thị khi báo thức reo (báo lại thì lấy giờ hiện tại). */

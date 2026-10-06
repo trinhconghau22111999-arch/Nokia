@@ -146,6 +146,13 @@ class AlarmService : Service() {
     private fun startSound() {
         val chosen = AlarmStore.alarmSound(this)
         if (chosen == null) return   // người dùng chọn "Im lặng"
+        // Âm lượng kênh báo thức = 0 thì chuông có reo cũng không nghe được: nâng lên mức vừa
+        try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            if (am.getStreamVolume(android.media.AudioManager.STREAM_ALARM) == 0)
+                am.setStreamVolume(android.media.AudioManager.STREAM_ALARM,
+                    maxOf(1, am.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM) * 7 / 10), 0)
+        } catch (_: Exception) {}
         player = play(chosen)
             ?: play(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
             ?: play(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))

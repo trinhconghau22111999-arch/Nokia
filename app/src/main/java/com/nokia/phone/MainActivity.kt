@@ -838,6 +838,9 @@ fun Phone() {
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
         commitAlarms(l)
+        if (eon && (Build.VERSION.SDK_INT < 33 ||
+                ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED))
+            askIgnoreBatteryOnce(ctx)   // cho phép chạy nền để báo thức không bị hệ thống chặn
         if (eon) {   // báo cho người dùng biết khi nào sẽ reo, để kiểm tra đã đặt đúng
             val min = ((AlarmStore.nextTrigger(eh, em) - System.currentTimeMillis() + 59_999L) / 60_000L).toInt()
             Toast.makeText(ctx, "Báo thức sau " + (if (min >= 60) "${min / 60} giờ " else "") + "${min % 60} phút", Toast.LENGTH_LONG).show()
