@@ -96,7 +96,8 @@ object Wallpaper {
 fun WallPreview(
     bmp: Bitmap, fx: Float, fy: Float,
     onSize: (Float, Float) -> Unit, onPan: (Float, Float) -> Unit,
-    onSet: () -> Unit, onCancel: () -> Unit
+    onSet: () -> Unit, onCancel: () -> Unit,
+    time: String = "", date: String = ""
 ) {
     val img = remember(bmp) { bmp.asImageBitmap() }
     val curFx by rememberUpdatedState(fx)
@@ -129,16 +130,17 @@ fun WallPreview(
             )
         }
         Box(Modifier.fillMaxSize().border(3.dp, INK))
-        Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.White.copy(alpha = 0.7f)).padding(horizontal = 6.dp, vertical = 4.dp)
-        ) {
-            Text("Kéo ảnh hoặc bấm ▲▼◀▶ để di chuyển", Modifier.fillMaxWidth(), color = INK, fontFamily = MONO,
-                fontSize = 12.sp, textAlign = TextAlign.Center)
+        LockTexts(time, date, false)    // hiện đồng hồ + dòng hướng dẫn mở khóa như màn hình khóa thật
+        // Điều khiển xem thử: nằm phía trên dòng hướng dẫn mở khóa, chỉ có nền mờ sau chữ
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 56.dp, start = 6.dp, end = 6.dp)) {
+            Text("Kéo ảnh hoặc bấm ▲▼◀▶ để di chuyển", Modifier.align(Alignment.CenterHorizontally)
+                .background(Color.White.copy(alpha = 0.7f)).padding(horizontal = 6.dp, vertical = 2.dp),
+                color = INK, fontFamily = MONO, fontSize = 12.sp, textAlign = TextAlign.Center)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Box(Modifier.clickable { onSet() }.padding(horizontal = 6.dp, vertical = 5.dp)) {
+                Box(Modifier.background(Color.White.copy(alpha = 0.7f)).clickable { onSet() }.padding(horizontal = 10.dp, vertical = 5.dp)) {
                     Text("Đặt", color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
                 }
-                Box(Modifier.clickable { onCancel() }.padding(horizontal = 6.dp, vertical = 5.dp)) {
+                Box(Modifier.background(Color.White.copy(alpha = 0.7f)).clickable { onCancel() }.padding(horizontal = 10.dp, vertical = 5.dp)) {
                     Text("Hủy", color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
                 }
             }

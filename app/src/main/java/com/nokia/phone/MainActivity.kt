@@ -344,13 +344,24 @@ fun isBtOn(ctx: Context): Boolean = try {
     ((ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter)?.isEnabled == true
 } catch (_: Exception) { false }
 
+/** Đồng hồ, ngày và dòng hướng dẫn mở khóa (dùng chung cho màn hình khóa và khung xem thử hình nền). */
+@Composable
+fun BoxScope.LockTexts(time: String, date: String, armed: Boolean) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(time, color = INK, fontSize = 70.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+        Text(date, color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 2, textAlign = TextAlign.Center)
+    }
+    Text(if (armed) "Bấm  *  để mở khóa" else "Bấm \"Menu\" và \"*\" để mở khóa",
+        Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
+        color = INK, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+}
+
 /** Màn hình khóa mặc định: hình nền che toàn bộ khung hiển thị, bấm Menu rồi * để mở khóa. */
 @Composable
 fun LockScreen(time: String, date: String, armed: Boolean, wall: ImageBitmap? = null) {
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
         if (wall != null) {
             Image(wall, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.3f)))   // làm sáng nhẹ để chữ đen dễ đọc
         } else Canvas(Modifier.fillMaxSize()) {
             val w = size.width; val h = size.height
             drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF8FD3F4), Color(0xFFDDF4E4))))
@@ -370,13 +381,7 @@ fun LockScreen(time: String, date: String, armed: Boolean, wall: ImageBitmap? = 
             }
             drawPath(near, Color(0xFF3F9E63))
         }
-        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(time, color = INK, fontSize = 70.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
-            Text(date, color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 2, textAlign = TextAlign.Center)
-        }
-        Text(if (armed) "Bấm  *  để mở khóa" else "Bấm \"Menu\" và \"*\" để mở khóa",
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
-            color = INK, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+        LockTexts(time, date, armed)
     }
 }
 
@@ -1688,7 +1693,8 @@ fun Phone() {
                     if (!locked) WallPreview(pb, wallFx, wallFy,
                         onSize = { w, h -> wallFw = w; wallFh = h },
                         onPan = { x, y -> wallFx = x; wallFy = y },
-                        onSet = { press("OK") }, onCancel = { press("SOFTR") })
+                        onSet = { press("OK") }, onCancel = { press("SOFTR") },
+                        time = now.take(5), date = dateNow())
                 }
             }
             }
