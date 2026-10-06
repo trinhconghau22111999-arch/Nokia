@@ -79,6 +79,13 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
 val LCD = Color(0xFFC7F0D8)
 val INK = Color(0xFF1B2B1B)
 val KEY = Color(0xFFD5DAE3)
@@ -87,7 +94,10 @@ val MONO = FontFamily.Monospace
 
 val MENU = listOf(
     "Ứng dụng" to "apps", "Danh bạ" to "contacts", "Tin nhắn" to "messages",
-    "Đồng hồ" to "clock", "Lịch" to "calendar", "Rắn săn mồi" to "snake", "Cài đặt" to "settings"
+    "Zalo" to "zalo", "YouTube" to "youtube",
+    "Đồng hồ" to "clock", "Lịch" to "calendar", "Ghi âm" to "recorder",
+    "Máy tính" to "calc", "Máy ảnh" to "camera", "Thư viện" to "gallery",
+    "Rắn săn mồi" to "snake", "Cài đặt" to "settings"
 )
 val LETTERS = mapOf("2" to "ABC", "3" to "DEF", "4" to "GHI", "5" to "JKL",
     "6" to "MNO", "7" to "PQRS", "8" to "TUV", "9" to "WXYZ", "*" to "+", "0" to "_", "#" to "⇧")
@@ -339,6 +349,40 @@ fun Phone() {
     var em by remember { mutableIntStateOf(0) }
     var eon by remember { mutableStateOf(true) }
     var lcdRect by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    val scope = rememberCoroutineScope()
+    var contacts by remember { mutableStateOf(listOf<Contact>()) }
+    var smsAll by remember { mutableStateOf(listOf<Sms>()) }
+    var threads by remember { mutableStateOf(listOf<SmsThread>()) }
+    var threadMsgs by remember { mutableStateOf(listOf<Sms>()) }
+    var curKey by remember { mutableStateOf("") }
+    var curAddr by remember { mutableStateOf("") }
+    var curName by remember { mutableStateOf("") }
+    var mv by remember { mutableIntStateOf(0) }
+    var cStage by remember { mutableIntStateOf(0) }
+    var cTo by remember { mutableStateOf("") }
+    var cName by remember { mutableStateOf("") }
+    var cFrom by remember { mutableStateOf("new") }
+    var cPick by remember { mutableIntStateOf(-1) }
+    val entry = remember { TextEntry() }
+    val calc = remember { CalcState() }
+    val cam = remember { CamHolder() }
+    var camFront by remember { mutableStateOf(false) }
+    var camOk by remember { mutableStateOf(false) }
+    var gIds by remember { mutableStateOf(listOf<Long>()) }
+    var gIdx by remember { mutableIntStateOf(0) }
+    var gBmp by remember { mutableStateOf<Bitmap?>(null) }
+    var gOk by remember { mutableStateOf(false) }
+    var gLoaded by remember { mutableStateOf(false) }
+    var recs by remember { mutableStateOf(listOf<RecItem>()) }
+    var playing by remember { mutableStateOf<String?>(null) }
+    var recTick by remember { mutableIntStateOf(0) }
+    var recording by remember { mutableStateOf(false) }
+    var permThen by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var permMust by remember { mutableStateOf(listOf<String>()) }
+    val cLines = remember(contacts) {
+        val cnt = contacts.groupingBy { it.name }.eachCount()
+        contacts.map { if ((cnt[it.name] ?: 0) > 1) it.name + "  " + it.number else it.name }
+    }
     val snake = remember { Snake() }
     val focus = remember { FocusRequester() }
     val haptic = LocalHapticFeedback.current
@@ -347,6 +391,22 @@ fun Phone() {
     LaunchedEffect(screen) { if (screen == "snake") while (true) { delay(170); snake.step() } }
     LaunchedEffect(lockAt) { if (lockAt != 0L) { delay(4000); lockAt = 0L } }
     LaunchedEffect(screen) { if (screen == "settings") while (true) { btOn = isBtOn(ctx); delay(600) } }
+    LaunchedEffect(gIdx, gIds, screen) {
+        if (screen == "gallery" && gIds.isNotEmpty()) {
+            gBmp = null
+            gBmp = withContext(Dispatchers.IO) { Gallery.bitmap(ctx, gIds[gIdx.coerceIn(0, gIds.lastIndex)]) }
+        }
+    }
+    LaunchedEffect(playing, recording, screen) {
+        if (screen == "recorder" || screen == "recording") while (playing != null || recording) { recTick++; delay(250) }
+    }
+    DisposableEffect(screen) {
+        val s = screen
+        onDispose {
+            if (s == "recording" && Rec.active) { Rec.stop(); recording = false }
+            if (s == "recorder") { Play.stop(); playing = null }
+        }
+    }
     DisposableEffect(Unit) {
         val r = object : BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) { locked = true; lockAt = 0L }
@@ -487,6 +547,7 @@ fun Phone() {
         if (!ok) {
             ctx.getSharedPreferences("alarms", Context.MODE_PRIVATE).edit().clear().apply()
             ctx.getSharedPreferences("sound", Context.MODE_PRIVATE).edit().clear().apply()
+            ctx.getSharedPreferences("sms_sent", Context.MODE_PRIVATE).edit().clear().apply()
             locked = true; lockAt = 0L; screen = "home"; sel = 0; dial = ""
         }
     }
@@ -534,8 +595,170 @@ fun Phone() {
             }
         }
     }
-    fun open(s: String) { screen = s; sel = 0; monthOffset = 0; if (s == "snake") snake.reset(); if (s == "apps") loadApps(); if (s == "sound") refreshSoundNames() }
-    fun back() { when (screen) { "home" -> {}; "menu" -> open("home"); "alarmEdit" -> screen = "clock"; "sound", "reset" -> open("settings"); "volume" -> open("sound"); else -> open("menu") } }
+    fun granted(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
+
+    val multiPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
+        val t = permThen
+        permThen = null
+        if (t != null) {
+            if (permMust.all { granted(it) }) t()
+            else Toast.makeText(ctx, "Cần cấp quyền để dùng chức năng này. Nếu máy không hiện hộp thoại: " +
+                "Cài đặt máy > Ứng dụng > Nokia Phone > Quyền (Android 13+: bấm ⋮ > Cho phép cài đặt bị hạn chế)",
+                Toast.LENGTH_LONG).show()
+        }
+    }
+    /** Xin quyền (nếu thiếu) rồi chạy then; must = các quyền bắt buộc, phần còn lại là tùy chọn. */
+    fun need(perms: List<String>, must: List<String> = perms, then: () -> Unit) {
+        val miss = perms.filter { !granted(it) }
+        if (miss.isEmpty()) then() else { permThen = then; permMust = must; multiPerm.launch(miss.toTypedArray()) }
+    }
+    val imgPerms = if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.READ_MEDIA_IMAGES)
+        else listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    val camPerms = if (Build.VERSION.SDK_INT < 29) listOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        else listOf(Manifest.permission.CAMERA)
+
+    fun loadContacts() { scope.launch { contacts = withContext(Dispatchers.IO) { Contacts.load(ctx) } } }
+    fun loadRecs() { scope.launch { recs = withContext(Dispatchers.IO) { Rec.list(ctx) } } }
+    fun loadSms(after: (() -> Unit)? = null) {
+        scope.launch {
+            val hasC = granted(Manifest.permission.READ_CONTACTS)
+            val (all, cs) = withContext(Dispatchers.IO) {
+                val c = if (hasC) Contacts.load(ctx) else emptyList()
+                SmsRepo.loadAll(ctx) to c
+            }
+            smsAll = all
+            if (cs.isNotEmpty()) contacts = cs
+            threads = buildThreads(all, if (cs.isNotEmpty()) cs else contacts)
+            if (curKey.isNotEmpty()) threadMsgs = all.filter { addrKey(it.addr) == curKey }
+            after?.invoke()
+        }
+    }
+
+    fun launchPkg(pkg: String, label: String) {
+        val i = ctx.packageManager.getLaunchIntentForPackage(pkg)
+        if (i != null) launch(i) else {
+            Toast.makeText(ctx, "Chưa cài $label, đang mở CH Play", Toast.LENGTH_SHORT).show()
+            try {
+                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) {}
+        }
+    }
+
+    /** Gọi ngay, không xác nhận, không qua màn hình quay số của app. */
+    fun callNow(n: String) {
+        if (n.isEmpty()) return
+        if (granted(Manifest.permission.CALL_PHONE)) placeCall(n)
+        else { pendingCall = n; callPerm.launch(Manifest.permission.CALL_PHONE) }
+    }
+
+    fun openThread(key: String) {
+        curKey = key
+        val t = threads.firstOrNull { it.key == key }
+        curAddr = t?.addr ?: ""
+        curName = t?.name ?: curAddr
+        threadMsgs = smsAll.filter { addrKey(it.addr) == key }
+        screen = "thread"; sel = 0
+    }
+    fun startCompose(to: String, name: String, from: String) {
+        cTo = to; cName = name; cFrom = from; cPick = -1
+        entry.reset()
+        cStage = if (to.isEmpty()) 0 else 1
+        screen = "compose"; sel = 0
+        if (to.isEmpty() && contacts.isEmpty() && granted(Manifest.permission.READ_CONTACTS)) loadContacts()
+    }
+    fun doSend() {
+        val body = entry.text.trim()
+        if (body.isEmpty() || cTo.isEmpty()) {
+            Toast.makeText(ctx, "Chưa có nội dung", Toast.LENGTH_SHORT).show(); return
+        }
+        need(listOf(Manifest.permission.SEND_SMS)) {
+            if (SmsRepo.send(ctx, cTo, body)) {
+                Toast.makeText(ctx, "Đã gửi", Toast.LENGTH_SHORT).show()
+                val key = addrKey(cTo)
+                loadSms { openThread(key) }
+            } else Toast.makeText(ctx, "Gửi không được", Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun pickContact(d: Int) {
+        if (contacts.isEmpty()) return
+        cPick = if (cPick < 0) (if (d > 0) 0 else contacts.size - 1) else (cPick + d + contacts.size) % contacts.size
+        cTo = contacts[cPick].number; cName = contacts[cPick].name
+    }
+    fun jumpTo(k: String) {
+        val g = LETTERS[k]?.lowercase() ?: return
+        val idx = contacts.indices.filter { i -> contacts[i].key.firstOrNull()?.let { ch -> ch in g } == true }
+        if (idx.isNotEmpty()) sel = idx.firstOrNull { it > sel } ?: idx.first()
+    }
+
+    fun startRecording() {
+        need(listOf(Manifest.permission.RECORD_AUDIO)) {
+            Play.stop(); playing = null
+            if (Rec.start(ctx)) { recording = true; screen = "recording"; sel = 0 }
+            else Toast.makeText(ctx, "Không ghi âm được", Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun stopRecording() {
+        val f = Rec.stop()
+        recording = false
+        loadRecs()
+        screen = "recorder"
+        sel = if (f != null) 1 else 0
+    }
+    fun togglePlay(i: Int) {
+        val r = recs.getOrNull(i - 1) ?: return
+        if (playing == r.file.absolutePath) { Play.stop(); playing = null }
+        else if (Play.play(r.file) { playing = null }) playing = r.file.absolutePath
+        else Toast.makeText(ctx, "Không phát được", Toast.LENGTH_SHORT).show()
+    }
+    fun deleteRec(i: Int) {
+        val r = recs.getOrNull(i - 1) ?: return
+        if (playing == r.file.absolutePath) { Play.stop(); playing = null }
+        r.file.delete()
+        loadRecs()
+        sel = (sel - 1).coerceAtLeast(0)
+        Toast.makeText(ctx, "Đã xóa", Toast.LENGTH_SHORT).show()
+    }
+
+    fun open(s: String) {
+        screen = s; sel = 0; monthOffset = 0
+        when (s) {
+            "snake" -> snake.reset()
+            "apps" -> loadApps()
+            "sound" -> refreshSoundNames()
+            "calc" -> calc.clear()
+            "recorder" -> loadRecs()
+            "contacts" -> need(listOf(Manifest.permission.READ_CONTACTS)) { loadContacts() }
+            "messages" -> {
+                curKey = ""
+                need(listOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS),
+                    listOf(Manifest.permission.READ_SMS)) { loadSms() }
+            }
+            "camera" -> { camOk = false; camFront = false; need(camPerms) { camOk = true } }
+            "gallery" -> {
+                gOk = false; gLoaded = false; gIds = emptyList(); gIdx = 0; gBmp = null
+                need(imgPerms) {
+                    gOk = true
+                    scope.launch { gIds = withContext(Dispatchers.IO) { Gallery.ids(ctx) }; gLoaded = true }
+                }
+            }
+        }
+    }
+    fun back() {
+        when (screen) {
+            "home" -> {}
+            "menu" -> open("home")
+            "alarmEdit" -> screen = "clock"
+            "sound", "reset" -> open("settings")
+            "volume" -> open("sound")
+            "thread" -> open("messages")
+            "msgview" -> screen = "thread"
+            "compose" -> if (cStage == 1 && cFrom == "new") cStage = 0
+                else if (cFrom == "thread") screen = "thread" else open("messages")
+            "recording" -> stopRecording()
+            else -> open("menu")
+        }
+    }
 
     fun press(k: String) {
         if (buzz) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -546,13 +769,21 @@ fun Phone() {
             else lockAt = 0L
             return
         }
-        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 4; "sound", "volume" -> 3; "clock" -> alarms.size + 1; else -> 1 }
+        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 4; "sound", "volume" -> 3; "clock" -> alarms.size + 1
+            "contacts" -> maxOf(contacts.size, 1); "messages" -> threads.size + 1
+            "thread" -> threadMsgs.size + 1; "msgview" -> maxOf(threadMsgs.size, 1); "recorder" -> recs.size + 1
+            else -> 1 }
         when (k) {
             "UP", "LEFT" -> when (screen) {
                 "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
                 "calendar" -> monthOffset--
                 "volume" -> if (k == "LEFT") adjustVol(-1) else sel = (sel - 1 + size) % size
                 "alarmEdit" -> editMove(k)
+                "calc" -> calc.op(if (k == "UP") '+' else '×')
+                "gallery" -> if (gIds.isNotEmpty()) gIdx = (gIdx - 1 + gIds.size) % gIds.size
+                "camera" -> if (k == "LEFT") camFront = !camFront
+                "msgview" -> mv = (mv - 1 + size) % size
+                "compose" -> if (cStage == 0) pickContact(-1)
                 else -> sel = (sel - 1 + size) % size
             }
             "DOWN", "RIGHT" -> when (screen) {
@@ -560,13 +791,18 @@ fun Phone() {
                 "calendar" -> monthOffset++
                 "volume" -> if (k == "RIGHT") adjustVol(1) else sel = (sel + 1) % size
                 "alarmEdit" -> editMove(k)
+                "calc" -> calc.op(if (k == "DOWN") '−' else '÷')
+                "gallery" -> if (gIds.isNotEmpty()) gIdx = (gIdx + 1) % gIds.size
+                "camera" -> if (k == "RIGHT") camFront = !camFront
+                "msgview" -> mv = (mv + 1) % size
+                "compose" -> if (cStage == 0) pickContact(1)
                 else -> sel = (sel + 1) % size
             }
             "OK", "SOFTL" -> when (screen) {
                 "home" -> open("menu")
                 "menu" -> when (val id = MENU[sel].second) {
-                    "contacts" -> launch(Intent(Intent.ACTION_VIEW, ContactsContract.Contacts.CONTENT_URI))
-                    "messages" -> launch(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_MESSAGING))
+                    "zalo" -> launchPkg("com.zing.zalo", "Zalo")
+                    "youtube" -> launchPkg("com.google.android.youtube", "YouTube")
                     else -> open(id)
                 }
                 "apps" -> apps.getOrNull(sel)?.let { a ->
@@ -589,21 +825,44 @@ fun Phone() {
                 "clock" -> startEdit(sel)
                 "calendar" -> monthOffset = 0
                 "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) deleteAlarm() else saveAlarm()
+                "contacts" -> contacts.getOrNull(sel)?.let { callNow(it.number) }
+                "messages" -> if (sel == 0) startCompose("", "", "new") else threads.getOrNull(sel - 1)?.let { openThread(it.key) }
+                "thread" -> if (sel == 0) startCompose(curAddr, curName, "thread") else { mv = sel - 1; screen = "msgview" }
+                "msgview" -> startCompose(curAddr, curName, "thread")
+                "compose" -> if (cStage == 0) { if (cTo.isNotEmpty()) cStage = 1 }
+                    else if (k == "SOFTL") doSend() else entry.newline()
+                "calc" -> if (k == "OK") calc.compute() else calc.back()
+                "camera" -> if (camOk) takePhoto(ctx, cam)
+                "recorder" -> if (sel == 0) startRecording() else togglePlay(sel)
+                "recording" -> stopRecording()
             }
-            "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) } else back()
+            "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) }
+                else if (screen == "compose" && cStage == 0 && cTo.isNotEmpty()) { cTo = cTo.dropLast(1); cName = "" }
+                else if (screen == "compose" && cStage == 1 && entry.text.isNotEmpty()) entry.backspace()
+                else back()
             "END" -> if (screen == "home") dial = "" else open("home")
-            "CALL" -> {
-                if (screen == "home" && dial.isNotEmpty()) {
-                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE)
-                        == PackageManager.PERMISSION_GRANTED) placeCall(dial)
-                    else { pendingCall = dial; callPerm.launch(Manifest.permission.CALL_PHONE) }
-                }
+            "CALL" -> when (screen) {
+                "home" -> if (dial.isNotEmpty()) callNow(dial)
+                "contacts" -> contacts.getOrNull(sel)?.let { callNow(it.number) }
+                "thread", "msgview" -> callNow(dialable(curAddr))
             }
-            else -> if (screen == "home") dial += k
-                else if (screen == "snake") when (k) {
+            else -> when (screen) {
+                "home" -> dial += k
+                "snake" -> when (k) {
                     "2" -> snake.turn(0 to -1); "8" -> snake.turn(0 to 1)
                     "4" -> snake.turn(-1 to 0); "6" -> snake.turn(1 to 0)
                 }
+                "calc" -> when (k) {
+                    "*" -> calc.comma()
+                    "#" -> calc.clear()
+                    else -> if (k.length == 1 && k[0].isDigit()) calc.digit(k)
+                }
+                "contacts" -> jumpTo(k)
+                "compose" -> if (cStage == 0) {
+                    if (k[0].isDigit()) { cTo += k; cName = "" } else if (k == "*" && cTo.isEmpty()) cTo = "+"
+                } else entry.key(k, SystemClock.uptimeMillis())
+                "recorder" -> if (k == "#" && sel > 0) deleteRec(sel)
+            }
         }
     }
 
@@ -617,10 +876,19 @@ fun Phone() {
         "home" -> "Menu"; "menu", "apps" -> "Chọn"; "settings", "sound" -> "Chọn"; "reset" -> "Có"
         "snake" -> if (snake.dead) "Chơi lại" else ""
         "clock" -> "Sửa"; "calendar" -> "Hôm nay"
+        "contacts" -> "Gọi"; "messages", "thread" -> "Chọn"; "msgview" -> "Trả lời"
+        "compose" -> if (cStage == 1) "Gửi" else "Tiếp"
+        "calc" -> "Xóa"; "camera" -> "Chụp"; "recording" -> "Lưu"
+        "recorder" -> if (sel == 0) "Ghi" else if (playing != null && playing == recs.getOrNull(sel - 1)?.file?.absolutePath) "Dừng" else "Nghe"
         "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) "Xóa" else "Lưu"
         else -> ""
     }
-    val right = when (screen) { "home" -> if (dial.isEmpty()) "" else "Xóa"; "reset" -> "Không"; else -> "Về" }
+    val right = when (screen) {
+        "home" -> if (dial.isEmpty()) "" else "Xóa"
+        "reset" -> "Không"
+        "compose" -> if ((cStage == 0 && cTo.isNotEmpty()) || (cStage == 1 && entry.text.isNotEmpty())) "Xóa" else "Về"
+        else -> "Về"
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // Tỉ lệ gốc của màn hình điện thoại thật -> làm chuẩn cho màn hình LCD nhỏ
@@ -697,6 +965,45 @@ fun Phone() {
                                 Spacer(Modifier.height(10.dp))
                                 Text("Xóa toàn bộ dữ liệu của riêng app Nokia Phone (báo thức, nhạc báo thức, quyền đã cấp). Máy của bạn không bị ảnh hưởng.",
                                     color = INK, fontSize = 14.sp, fontFamily = MONO, textAlign = TextAlign.Center)
+                            }
+                            "contacts" -> if (contacts.isEmpty())
+                                Msg(if (granted(Manifest.permission.READ_CONTACTS)) "Danh bạ trống" else "Cần quyền Danh bạ")
+                                else Lines(cLines, sel, tapItem, scroll)
+                            "messages" -> Lines(listOf("+ Soạn tin mới") + threads.map {
+                                (if (it.last.sent) "→ " else "") + it.name + ": " + it.last.body.replace('\n', ' ')
+                            }, sel, tapItem, scroll)
+                            "thread" -> Column(Modifier.fillMaxSize()) {
+                                Head(curName)
+                                Box(Modifier.weight(1f)) {
+                                    Lines(listOf("+ Trả lời") + threadMsgs.map {
+                                        (if (it.sent) "→ " else "← ") + it.body.replace('\n', ' ')
+                                    }, sel, tapItem, scroll)
+                                }
+                            }
+                            "msgview" -> MsgView(curName, threadMsgs.getOrNull(mv), mv, threadMsgs.size)
+                            "compose" -> ComposeView(cStage, cTo, cName, entry)
+                            "calc" -> CalcScreen(calc)
+                            "camera" -> if (camOk) Box(Modifier.fillMaxSize()) {
+                                CameraView(cam, camFront)
+                                Box(Modifier.fillMaxSize().clickable { press("OK") })
+                                Text(if (camFront) "Camera trước  (◀▶ đổi)" else "Camera sau  (◀▶ đổi)",
+                                    Modifier.align(Alignment.TopCenter).background(LCD).padding(horizontal = 6.dp),
+                                    color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            } else Msg("Cần quyền Máy ảnh")
+                            "gallery" -> GalleryView(gOk, gLoaded, gIds.size, gIdx, gBmp) { d ->
+                                if (gIds.isNotEmpty()) gIdx = (gIdx + d + gIds.size) % gIds.size
+                            }
+                            "recorder" -> Column(Modifier.fillMaxSize()) {
+                                Box(Modifier.weight(1f)) { Lines(recLines(recs, playing, recTick), sel, tapItem, scroll) }
+                                Text("OK: ghi/nghe   #: xóa", Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 2.dp),
+                                    color = LCD, fontFamily = MONO, fontSize = 12.sp, maxLines = 1)
+                            }
+                            "recording" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.Center, Alignment.CenterHorizontally) {
+                                Text(if ((recTick / 2) % 2 == 0) "● ĐANG GHI ÂM" else "○ ĐANG GHI ÂM",
+                                    color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text(recTick.let { mmss(SystemClock.elapsedRealtime() - Rec.startedAt) },
+                                    color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 56.sp)
+                                Text("OK: dừng và lưu", color = INK, fontFamily = MONO, fontSize = 14.sp)
                             }
                             "snake" -> Column(Modifier.fillMaxSize()) {
                                 Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}",
