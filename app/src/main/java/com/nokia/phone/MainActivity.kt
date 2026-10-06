@@ -4,6 +4,9 @@ import android.Manifest
 import android.app.ActivityOptions
 import android.graphics.Rect
 import android.content.Intent
+import android.content.res.Configuration
+import android.os.Handler
+import android.os.Looper
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -83,6 +86,9 @@ data class AppInfo(val label: String, val pkg: String)
 /** Tăng mỗi khi người dùng bấm nút Home (launcher chạy lại) -> về màn hình chờ. */
 val homeTick = mutableIntStateOf(0)
 
+/** true khi MainActivity (màn hình LCD) đang nằm trong chế độ chia đôi màn hình. */
+val inSplit = mutableStateOf(false)
+
 class Snake {
     val w = 10; val h = 14
     var body by mutableStateOf(listOf(5 to 7, 4 to 7, 3 to 7))
@@ -116,6 +122,7 @@ class MainActivity : ComponentActivity() {
         @Suppress("DEPRECATION")
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         hideBars()
+        inSplit.value = isInMultiWindowMode
         setContent { Phone() }
     }
 
@@ -134,7 +141,50 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.getBooleanExtra("menu", false)) NokiaState.openMenu = true
         homeTick.intValue++
+    }
+
+    override fun onResume() {
+        super.onResume()
+        NokiaState.lcdResumed = true
+        NokiaAccessibilityService.instance?.hideCursor()
+        if (inSplit.value) ensureKeypad() else autoSplit()
+    }
+
+    override fun onPause() {
+        NokiaState.lcdResumed = false
+        super.onPause()
+    }
+
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        inSplit.value = isInMultiWindowMode
+        if (isInMultiWindowMode) ensureKeypad() else {
+            NokiaState.keypad?.finish()
+            NokiaAccessibilityService.instance?.hideCursor()
+        }
+    }
+
+    /** Vào app lần đầu: nếu đã bật dịch vụ Trợ năng thì tự chia đôi màn hình. */
+    private fun autoSplit() {
+        val svc = NokiaAccessibilityService.instance ?: return
+        if (NokiaState.splitTried) return
+        NokiaState.splitTried = true
+        Handler(Looper.getMainLooper()).postDelayed({ svc.toggleSplit() }, 500)
+    }
+
+    /** Đã chia đôi mà chưa có bàn phím -> mở bàn phím Nokia ở nửa còn lại (nửa dưới). */
+    private fun ensureKeypad() {
+        if (NokiaState.keypadAlive) return
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (inSplit.value && !NokiaState.keypadAlive) {
+                try {
+                    startActivity(Intent(this, KeypadActivity::class.java).addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK))
+                } catch (_: Exception) {}
+            }
+        }, 700)
     }
 }
 
@@ -196,7 +246,7 @@ fun Phone() {
     LaunchedEffect(Unit) { focus.requestFocus(); while (true) { now = timeNow(); delay(1000) } }
     LaunchedEffect(screen) { if (screen == "snake") while (true) { delay(170); snake.step() } }
     val tick = homeTick.intValue
-    LaunchedEffect(tick) { if (tick > 0) { screen = "home"; sel = 0 } }
+    LaunchedEffect(tick) { if (tick > 0) { screen = if (NokiaState.openMenu) "menu" else "home"; NokiaState.openMenu = false; sel = 0 } }
 
     fun freeformOn(): Boolean =
         ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_FREEFORM_WINDOW_MANAGEMENT) ||
@@ -205,7 +255,7 @@ fun Phone() {
     /** Mở app trong cửa sổ có kích thước đúng bằng vùng nội dung của màn hình LCD nhỏ (cần bật cửa sổ tự do). */
     fun launch(i: Intent, inLcd: Boolean = true) {
         val r = lcdRect
-        if (!inLcd || r == null) {
+        if (!inLcd || r == null || inSplit.value) {
             try { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
             return
         }
@@ -232,6 +282,11 @@ fun Phone() {
             "cua so tu do: " + freeformOn() + "\n" +
             "khung LCD: " + (r?.let { "${it.left.roundToInt()},${it.top.roundToInt()} - ${it.right.roundToInt()},${it.bottom.roundToInt()}" } ?: "null")
         Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+    }
+    fun toggleSplit() {
+        val svc = NokiaAccessibilityService.instance
+        if (svc == null) Toast.makeText(ctx, "Hãy bật dịch vụ Trợ năng Nokia Phone trước", Toast.LENGTH_LONG).show()
+        else { NokiaState.splitTried = true; svc.toggleSplit() }
     }
     fun dialScreen(n: String) = launch(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(n))))
     fun placeCall(n: String) {
@@ -260,7 +315,7 @@ fun Phone() {
 
     fun press(k: String) {
         if (buzz) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 4; else -> 1 }
+        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 6; else -> 1 }
         when (k) {
             "UP", "LEFT" -> when (screen) {
                 "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
@@ -286,7 +341,9 @@ fun Phone() {
                     0 -> buzz = !buzz
                     1 -> launch(Intent(Settings.ACTION_HOME_SETTINGS))
                     2 -> launch(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), false)
-                    else -> showDiag()
+                    3 -> showDiag()
+                    4 -> launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), false)
+                    else -> toggleSplit()
                 }
                 "snake" -> if (snake.dead) snake.reset()
             }
@@ -310,6 +367,7 @@ fun Phone() {
     val tapItem: (Int) -> Unit = { i -> sel = i; press("OK") }
     val scroll: (Int) -> Unit = { d -> press(if (d > 0) "DOWN" else "UP") }
 
+    SideEffect { NokiaState.listener = { k -> press(k) } }
     BackHandler { back() }
 
     val left = when (screen) {
@@ -364,7 +422,7 @@ fun Phone() {
                                 Text(dateNow(), color = INK, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                 MonthCalendar(monthOffset)
                             }
-                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher", "Cửa sổ nhỏ (dev)", "Thông tin máy"), sel, tapItem, scroll)
+                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher", "Cửa sổ nhỏ (dev)", "Thông tin máy", "Bật Trợ năng", "Chia đôi màn hình"), sel, tapItem, scroll)
                             "snake" -> Column(Modifier.fillMaxSize()) {
                                 Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}",
                                     color = INK, fontFamily = MONO, fontSize = 12.sp)
@@ -400,8 +458,10 @@ fun Phone() {
             }
             }
 
-            Spacer(Modifier.height(6.dp))
-            Keys(::press)
+            if (!inSplit.value) {
+                Spacer(Modifier.height(6.dp))
+                Keys(::press)
+            }
         }
     }
 }

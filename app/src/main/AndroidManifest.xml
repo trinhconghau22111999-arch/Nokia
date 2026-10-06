@@ -21,6 +21,8 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
+            android:resizeableActivity="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|density|uiMode|fontScale"
             android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -33,5 +35,29 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Bàn phím Nokia cố định ở nửa dưới khi chia đôi màn hình -->
+        <activity
+            android:name=".KeypadActivity"
+            android:exported="false"
+            android:taskAffinity="com.nokia.phone.keypad"
+            android:resizeableActivity="true"
+            android:excludeFromRecents="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|density|uiMode|fontScale"
+            android:screenOrientation="portrait" />
+
+        <!-- Dịch vụ Trợ năng: tự chia đôi màn hình và điều khiển app ở nửa trên -->
+        <service
+            android:name=".NokiaAccessibilityService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
     </application>
 </manifest>
