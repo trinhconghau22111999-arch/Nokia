@@ -37,6 +37,8 @@ import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,6 +65,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -120,6 +123,8 @@ class Snake {
     var dead by mutableStateOf(false)
     var score by mutableIntStateOf(0)
     fun reset() { body = listOf(5 to 7, 4 to 7, 3 to 7); dir = 1 to 0; dead = false; score = 0 }
+    /** Thời gian giữa hai bước (ms): cứ ăn xong 10 mồi thì nhanh hơn ~15%, thấp nhất 50ms. */
+    fun stepMs(): Long = maxOf(50L, (170 * Math.pow(0.85, (score / 10).toDouble())).toLong())
     fun turn(d: Pair<Int, Int>) { if (d.first != -dir.first || d.second != -dir.second) dir = d }
     fun step() {
         if (dead) return
@@ -275,7 +280,7 @@ fun MonthCalendar(offset: Int) {
             }
         }
         Text(footer, Modifier.fillMaxWidth().padding(vertical = 3.dp), textAlign = TextAlign.Center,
-            color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+            color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 2)
     }
 }
 
@@ -332,8 +337,8 @@ fun LockScreen(time: String, date: String, armed: Boolean) {
             drawPath(near, Color(0xFF3F9E63))
         }
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(time, color = INK, fontSize = 80.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
-            Text(date, color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 1)
+            Text(time, color = INK, fontSize = 70.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+            Text(date, color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 2, textAlign = TextAlign.Center)
         }
         Text(if (armed) "Bấm  *  để mở khóa" else "Bấm  Menu  rồi bấm  *",
             Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
@@ -384,6 +389,10 @@ fun Phone() {
     val cam = remember { CamHolder() }
     var camFront by remember { mutableStateOf(false) }
     var camOk by remember { mutableStateOf(false) }
+    var flash by remember { mutableStateOf(false) }
+    var shutterTick by remember { mutableIntStateOf(0) }
+    val shut = remember { Animatable(0f) }
+    LaunchedEffect(shutterTick) { if (shutterTick > 0) { shut.animateTo(1f, tween(90)); shut.animateTo(0f, tween(160)) } }
     var gIds by remember { mutableStateOf(listOf<Long>()) }
     var gIdx by remember { mutableIntStateOf(0) }
     var gBmp by remember { mutableStateOf<Bitmap?>(null) }
@@ -404,7 +413,7 @@ fun Phone() {
     val haptic = LocalHapticFeedback.current
 
     LaunchedEffect(Unit) { focus.requestFocus(); while (true) { now = timeNow(); delay(1000) } }
-    LaunchedEffect(screen) { if (screen == "snake") while (true) { delay(170); snake.step() } }
+    LaunchedEffect(screen) { if (screen == "snake") while (true) { delay(snake.stepMs()); snake.step() } }
     LaunchedEffect(lockAt) { if (lockAt != 0L) { delay(4000); lockAt = 0L } }
     LaunchedEffect(screen) { if (screen == "settings") while (true) { btOn = isBtOn(ctx); dialerOn = isDefaultDialer(ctx); delay(600) } }
     LaunchedEffect(gIdx, gIds, screen) {
@@ -766,7 +775,7 @@ fun Phone() {
                 need(listOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS),
                     listOf(Manifest.permission.READ_SMS)) { loadSms() }
             }
-            "camera" -> { camOk = false; camFront = false; need(camPerms) { camOk = true } }
+            "camera" -> { camOk = false; camFront = false; flash = false; need(camPerms) { camOk = true } }
             "gallery" -> {
                 gOk = false; gLoaded = false; gIds = emptyList(); gIdx = 0; gBmp = null
                 need(imgPerms) {
@@ -813,7 +822,10 @@ fun Phone() {
                 "alarmEdit" -> editMove(k)
                 "calc" -> calc.op(if (k == "UP") '+' else '×')
                 "gallery" -> if (gIds.isNotEmpty()) gIdx = (gIdx - 1 + gIds.size) % gIds.size
-                "camera" -> if (k == "LEFT") camFront = !camFront
+                "camera" -> if (k == "LEFT") { camFront = !camFront; flash = false }
+                else if (camFront) Toast.makeText(ctx, "Camera trước không có đèn flash", Toast.LENGTH_SHORT).show()
+                else if (!cam.hasFlash) Toast.makeText(ctx, "Máy không có đèn flash", Toast.LENGTH_SHORT).show()
+                else flash = !flash
                 "msgview" -> mv = (mv - 1 + size) % size
                 "compose" -> if (cStage == 0) pickContact(-1)
                 else -> sel = (sel - 1 + size) % size
@@ -825,7 +837,7 @@ fun Phone() {
                 "alarmEdit" -> editMove(k)
                 "calc" -> calc.op(if (k == "DOWN") '−' else '÷')
                 "gallery" -> if (gIds.isNotEmpty()) gIdx = (gIdx + 1) % gIds.size
-                "camera" -> if (k == "RIGHT") camFront = !camFront
+                "camera" -> if (k == "RIGHT") { camFront = !camFront; flash = false }
                 "msgview" -> mv = (mv + 1) % size
                 "compose" -> if (cStage == 0) pickContact(1)
                 else -> sel = (sel + 1) % size
@@ -866,7 +878,7 @@ fun Phone() {
                 "compose" -> if (cStage == 0) { if (cTo.isNotEmpty()) cStage = 1 }
                     else if (k == "SOFTL") doSend() else entry.newline()
                 "calc" -> if (k == "OK") calc.compute() else calc.back()
-                "camera" -> if (camOk) takePhoto(ctx, cam)
+                "camera" -> if (camOk) { shutterTick++; takePhoto(ctx, cam) }
                 "recorder" -> if (sel == 0) startRecording() else togglePlay(sel)
                 "recording" -> stopRecording()
             }
@@ -950,6 +962,7 @@ fun Phone() {
         ) {
             // Màn hình LCD nhỏ (phần duy nhất thay đổi)
             Box(Modifier.fillMaxWidth().weight(0.72f).background(LCD), contentAlignment = Alignment.Center) {
+            LcdFontScale {
             Box(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().background(LCD).statusBarsPadding()) {
                     Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { lcdRect = it.boundsInWindow() }
@@ -957,16 +970,16 @@ fun Phone() {
                         when (screen) {
                             "home" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(now.take(5), color = INK, fontSize = 80.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                    Text(now.take(5), color = INK, fontSize = 70.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                     Text(dateNow(), color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO,
-                                        maxLines = 1, overflow = TextOverflow.Clip)
+                                        maxLines = 2, textAlign = TextAlign.Center)
                                 }
-                                Text(dial, color = INK, fontSize = 32.sp, fontFamily = MONO, maxLines = 1, overflow = TextOverflow.Clip)
+                                Text(dial.takeLast(11), color = INK, fontSize = 32.sp, fontFamily = MONO, maxLines = 1, overflow = TextOverflow.Clip)
                             }
                             "menu" -> Lines(MENU.map { it.first }, sel, tapItem, scroll)
                             "apps" -> Lines(apps.map { it.label }.ifEmpty { listOf("(trống)") }, sel, tapItem, scroll)
                             "clock" -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(now, Modifier.padding(top = 16.dp), color = INK, fontSize = 52.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                Text(now, Modifier.padding(top = 16.dp), color = INK, fontSize = 40.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                 Text(dateNow(), color = INK, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                 Spacer(Modifier.height(14.dp))
                                 Text("BÁO THỨC", Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 2.dp),
@@ -1020,11 +1033,23 @@ fun Phone() {
                             "compose" -> ComposeView(cStage, cTo, cName, entry)
                             "calc" -> CalcScreen(calc)
                             "camera" -> if (camOk) Box(Modifier.fillMaxSize()) {
-                                CameraView(cam, camFront)
+                                CameraView(cam, camFront, flash)
                                 Box(Modifier.fillMaxSize().clickable { press("OK") })
-                                Text(if (camFront) "Camera trước  (◀▶ đổi)" else "Camera sau  (◀▶ đổi)",
+                                Text((if (camFront) "Trước" else "Sau") + "  ◀▶ đổi  ▲ flash: " + (if (flash) "BẬT" else "TẮT"),
                                     Modifier.align(Alignment.TopCenter).background(LCD).padding(horizontal = 6.dp),
                                     color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                // Hiệu ứng "đóng khung" khi chụp: 4 cạnh khép vào giữa rồi mở lại
+                                Canvas(Modifier.fillMaxSize()) {
+                                    val p = shut.value
+                                    if (p > 0f) {
+                                        val hh = size.height / 2f * p
+                                        val ww = size.width / 2f * p
+                                        drawRect(INK, Offset(0f, 0f), Size(size.width, hh))
+                                        drawRect(INK, Offset(0f, size.height - hh), Size(size.width, hh))
+                                        drawRect(INK, Offset(0f, 0f), Size(ww, size.height))
+                                        drawRect(INK, Offset(size.width - ww, 0f), Size(ww, size.height))
+                                    }
+                                }
                             } else Msg("Cần quyền Máy ảnh")
                             "gallery" -> GalleryView(gOk, gLoaded, gIds.size, gIdx, gBmp) { d ->
                                 if (gIds.isNotEmpty()) gIdx = (gIdx + d + gIds.size) % gIds.size
@@ -1042,7 +1067,7 @@ fun Phone() {
                                 Text("OK: dừng và lưu", color = INK, fontFamily = MONO, fontSize = 14.sp)
                             }
                             "snake" -> Column(Modifier.fillMaxSize()) {
-                                Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}",
+                                Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}   Cấp: ${snake.score / 10 + 1}",
                                     color = INK, fontFamily = MONO, fontSize = 12.sp)
                                 Canvas(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
                                     detectTapGestures { o ->
@@ -1076,6 +1101,7 @@ fun Phone() {
                 if (locked) LockScreen(now.take(5), dateNow(), lockAt != 0L)
             }
             }
+            }
 
             if (!inSplit.value) {
                 Spacer(Modifier.height(6.dp))
@@ -1087,21 +1113,27 @@ fun Phone() {
 
 @Composable
 fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -> Unit) {
-    val visible = 9
-    val start = (sel - visible / 2).coerceIn(0, maxOf(0, items.size - visible))
-    Column(Modifier.fillMaxWidth().fillMaxHeight().pointerInput(Unit) {
-        var acc = 0f
-        detectVerticalDragGestures(onDragEnd = { acc = 0f }) { _, d ->
-            acc += d
-            if (acc < -45f) { onScroll(1); acc = 0f } else if (acc > 45f) { onScroll(-1); acc = 0f }
-        }
-    }) {
-        items.drop(start).take(visible).forEachIndexed { n, t ->
-            val i = start + n
-            Text(t, Modifier.fillMaxWidth().clickable { onTap(i) }
-                .background(if (i == sel) INK else LCD).padding(horizontal = 6.dp, vertical = 4.dp),
-                color = if (i == sel) LCD else INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
-                fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    // Mỗi hàng cao cố định; số hàng hiện ra = chiều cao còn trống / chiều cao hàng -> lấp đầy phần dưới màn hình
+    val rowH = with(LocalDensity.current) { (14f * 1.7f).sp.toDp() }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val visible = maxOf(1, (maxHeight / rowH).toInt())
+        val start = (sel - visible / 2).coerceIn(0, maxOf(0, items.size - visible))
+        Column(Modifier.fillMaxSize().pointerInput(Unit) {
+            var acc = 0f
+            detectVerticalDragGestures(onDragEnd = { acc = 0f }) { _, d ->
+                acc += d
+                if (acc < -45f) { onScroll(1); acc = 0f } else if (acc > 45f) { onScroll(-1); acc = 0f }
+            }
+        }) {
+            items.drop(start).take(visible).forEachIndexed { n, t ->
+                val i = start + n
+                Box(Modifier.fillMaxWidth().height(rowH).clickable { onTap(i) }
+                    .background(if (i == sel) INK else LCD).padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.CenterStart) {
+                    Text(t, color = if (i == sel) LCD else INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
     }
 }

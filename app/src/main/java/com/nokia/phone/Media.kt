@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -24,6 +25,8 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,13 +40,20 @@ import java.util.Locale
 
 // ---------------------------------------------------------------- Máy ảnh
 
-class CamHolder { var capture: ImageCapture? = null }
+class CamHolder {
+    var capture: ImageCapture? = null
+    var control: CameraControl? = null
+    var hasFlash = false
+    var torch = false      // trạng thái đèn flash mong muốn, áp dụng ngay khi camera mở xong
+}
 
 /** Khung xem trước camera nằm gọn trong ô màn hình LCD. */
 @Composable
-fun CameraView(holder: CamHolder, front: Boolean) {
+fun CameraView(holder: CamHolder, front: Boolean, flash: Boolean) {
     val ctx = LocalContext.current
     val view = remember { PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
+    SideEffect { holder.torch = flash }
+    LaunchedEffect(flash) { if (holder.hasFlash) holder.control?.enableTorch(flash) }
     DisposableEffect(front) {
         val future = ProcessCameraProvider.getInstance(ctx)
         var provider: ProcessCameraProvider? = null
@@ -56,12 +66,15 @@ fun CameraView(holder: CamHolder, front: Boolean) {
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(view.surfaceProvider) }
                 val cap = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
                 p.unbindAll()
-                p.bindToLifecycle(
+                val camera = p.bindToLifecycle(
                     ctx as LifecycleOwner,
                     if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA,
                     preview, cap
                 )
                 holder.capture = cap
+                holder.control = camera.cameraControl
+                holder.hasFlash = camera.cameraInfo.hasFlashUnit()
+                if (holder.torch && holder.hasFlash) camera.cameraControl.enableTorch(true)
             } catch (_: Exception) {
                 Toast.makeText(ctx, "Không mở được camera", Toast.LENGTH_SHORT).show()
             }
@@ -70,6 +83,8 @@ fun CameraView(holder: CamHolder, front: Boolean) {
             disposed = true
             try { provider?.unbindAll() } catch (_: Exception) {}
             holder.capture = null
+            holder.control = null
+            holder.hasFlash = false
         }
     }
     AndroidView({ view }, Modifier.fillMaxSize())
@@ -89,7 +104,7 @@ fun takePhoto(ctx: Context, holder: CamHolder) {
     ).build()
     cap.takePicture(o, ContextCompat.getMainExecutor(ctx), object : ImageCapture.OnImageSavedCallback {
         override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-            Toast.makeText(ctx, "Đã lưu ảnh", Toast.LENGTH_SHORT).show()
+            // Không hiện thông báo: hiệu ứng đóng khung chụp ở màn hình đã báo là đã chụp
         }
         override fun onError(exception: ImageCaptureException) {
             Toast.makeText(ctx, "Chụp ảnh lỗi", Toast.LENGTH_SHORT).show()

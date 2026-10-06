@@ -148,10 +148,11 @@ object CalcEval {
 fun CalcScreen(c: CalcState) {
     val shown = c.expr.ifEmpty { "0" }
     val big = when {
-        shown.length <= 9 -> 44
-        shown.length <= 13 -> 34
-        shown.length <= 18 -> 26
-        else -> 20
+        shown.length <= 8 -> 38
+        shown.length <= 10 -> 33
+        shown.length <= 13 -> 26
+        shown.length <= 18 -> 19
+        else -> 14
     }
     val second = if (c.done) "= " + c.result else c.preview.let { if (it.isEmpty()) "" else "= $it" }
     Column(Modifier.fillMaxSize()) {
@@ -163,7 +164,7 @@ fun CalcScreen(c: CalcState) {
             Text(shown, color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
                 fontSize = big.sp, maxLines = 2, textAlign = TextAlign.End)
             Text(second, color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
-                fontSize = if (c.done) 26.sp else 18.sp, maxLines = 1)
+                fontSize = if (c.done) 20.sp else 18.sp, maxLines = 1)
         }
         Spacer(Modifier.height(4.dp))
         Column(Modifier.fillMaxWidth().weight(0.72f)) {

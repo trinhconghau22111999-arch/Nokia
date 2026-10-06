@@ -142,6 +142,7 @@ fun NokiaFrame(
             }
     ) {
         Box(Modifier.fillMaxWidth().weight(0.72f).background(LCD)) {
+            LcdFontScale {
             Column(Modifier.fillMaxSize().background(LCD).statusBarsPadding()) {
                 Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp), content = lcd)
                 Row(Modifier.fillMaxWidth()) {
@@ -153,6 +154,7 @@ fun NokiaFrame(
                         Text(right, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
                     }
                 }
+            }
             }
         }
         if (!split) {
