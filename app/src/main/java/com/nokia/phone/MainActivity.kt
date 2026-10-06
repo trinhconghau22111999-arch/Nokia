@@ -357,7 +357,7 @@ fun LockScreen(time: String, date: String, armed: Boolean) {
             Text(time, color = INK, fontSize = 70.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
             Text(date, color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 2, textAlign = TextAlign.Center)
         }
-        Text(if (armed) "Bấm  *  để mở khóa" else "Bấm  Menu  rồi bấm  *",
+        Text(if (armed) "Bấm  *  để mở khóa" else "Bấm \"Menu\" và \"*\" để mở khóa",
             Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
             color = INK, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
     }
