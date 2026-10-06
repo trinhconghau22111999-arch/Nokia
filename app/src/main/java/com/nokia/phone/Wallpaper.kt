@@ -130,7 +130,7 @@ fun WallPreview(
             )
         }
         Box(Modifier.fillMaxSize().border(3.dp, INK))
-        LockTexts(time, date, false)    // hiện đồng hồ + dòng hướng dẫn mở khóa như màn hình khóa thật
+        LockTexts(time, date, false, true)    // hiện đồng hồ + dòng hướng dẫn mở khóa như màn hình khóa thật
         // Điều khiển xem thử: nằm phía trên dòng hướng dẫn mở khóa, chỉ có nền mờ sau chữ
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 56.dp, start = 6.dp, end = 6.dp)) {
             Text("Kéo ảnh hoặc bấm ▲▼◀▶ để di chuyển", Modifier.align(Alignment.CenterHorizontally)

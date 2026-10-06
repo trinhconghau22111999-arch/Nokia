@@ -346,14 +346,18 @@ fun isBtOn(ctx: Context): Boolean = try {
 
 /** Đồng hồ, ngày và dòng hướng dẫn mở khóa (dùng chung cho màn hình khóa và khung xem thử hình nền). */
 @Composable
-fun BoxScope.LockTexts(time: String, date: String, armed: Boolean) {
+fun BoxScope.LockTexts(time: String, date: String, armed: Boolean, onPhoto: Boolean = false) {
+    // Có ảnh nền do người dùng chọn -> chữ trắng (kèm bóng mờ nhẹ cho dễ đọc); nền mặc định -> chữ đen như cũ
+    val c = if (onPhoto) Color.White else INK
+    val sh = if (onPhoto) androidx.compose.ui.text.TextStyle(
+        shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 2f), 6f)) else androidx.compose.ui.text.TextStyle.Default
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(time, color = INK, fontSize = 70.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
-        Text(date, color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 2, textAlign = TextAlign.Center)
+        Text(time, color = c, style = sh, fontSize = 70.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+        Text(date, color = c, style = sh, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 2, textAlign = TextAlign.Center)
     }
     Text(if (armed) "Bấm  *  để mở khóa" else "Bấm \"Menu\" và \"*\" để mở khóa",
         Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
-        color = INK, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+        color = c, style = sh, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
 }
 
 /** Màn hình khóa mặc định: hình nền che toàn bộ khung hiển thị, bấm Menu rồi * để mở khóa. */
@@ -381,7 +385,7 @@ fun LockScreen(time: String, date: String, armed: Boolean, wall: ImageBitmap? = 
             }
             drawPath(near, Color(0xFF3F9E63))
         }
-        LockTexts(time, date, armed)
+        LockTexts(time, date, armed, wall != null)
     }
 }
 
