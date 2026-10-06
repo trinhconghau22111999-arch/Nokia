@@ -402,6 +402,7 @@ fun Phone() {
     var playing by remember { mutableStateOf<String?>(null) }
     var recTick by remember { mutableIntStateOf(0) }
     var recording by remember { mutableStateOf(false) }
+    var recPaused by remember { mutableStateOf(false) }
     var permThen by remember { mutableStateOf<(() -> Unit)?>(null) }
     var permMust by remember { mutableStateOf(listOf<String>()) }
     val cLines = remember(contacts) {
@@ -735,16 +736,26 @@ fun Phone() {
     fun startRecording() {
         need(listOf(Manifest.permission.RECORD_AUDIO)) {
             Play.stop(); playing = null
-            if (Rec.start(ctx)) { recording = true; screen = "recording"; sel = 0 }
+            if (Rec.active) {
+                Toast.makeText(ctx, if (CallHub.recording) "Đang ghi âm cuộc gọi" else "Đang ghi âm", Toast.LENGTH_SHORT).show()
+                return@need
+            }
+            if (Rec.start(ctx)) { recording = true; recPaused = false; screen = "recording"; sel = 0 }
             else Toast.makeText(ctx, "Không ghi âm được", Toast.LENGTH_SHORT).show()
         }
     }
     fun stopRecording() {
         val f = Rec.stop()
-        recording = false
+        recording = false; recPaused = false
+        if (f == null) Toast.makeText(ctx, "Bản ghi quá ngắn, không lưu", Toast.LENGTH_SHORT).show()
         loadRecs()
         screen = "recorder"
         sel = if (f != null) 1 else 0
+    }
+    fun togglePause() {
+        if (Rec.paused) { Rec.resume(); recPaused = false }
+        else if (Rec.pause()) recPaused = true
+        else Toast.makeText(ctx, "Máy không hỗ trợ tạm dừng", Toast.LENGTH_SHORT).show()
     }
     fun togglePlay(i: Int) {
         val r = recs.getOrNull(i - 1) ?: return
@@ -797,6 +808,7 @@ fun Phone() {
             "compose" -> if (cStage == 1 && cFrom == "new") cStage = 0
                 else if (cFrom == "thread") screen = "thread" else open("messages")
             "recording" -> stopRecording()
+            "recConfirm" -> screen = "recorder"
             else -> open("menu")
         }
     }
@@ -810,6 +822,12 @@ fun Phone() {
             else lockAt = 0L
             return
         }
+        if (screen == "recConfirm") {   // Xóa bản ghi? OK/Có = xóa, phím khác = hủy
+            if (k == "OK" || k == "SOFTL") { deleteRec(sel); screen = "recorder" }
+            else if (k == "END") open("home")
+            else if (k == "SOFTR" || k == "UP" || k == "DOWN" || k == "LEFT" || k == "RIGHT") screen = "recorder"
+            return
+        }
         val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 5; "sound", "volume" -> 3; "clock" -> alarms.size + 1
             "contacts" -> maxOf(contacts.size, 1); "messages" -> threads.size + 1
             "thread" -> threadMsgs.size + 1; "msgview" -> maxOf(threadMsgs.size, 1); "recorder" -> recs.size + 1
@@ -817,6 +835,7 @@ fun Phone() {
         when (k) {
             "UP", "LEFT" -> when (screen) {
                 "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
+                "recording" -> togglePause()
                 "calendar" -> monthOffset--
                 "volume" -> if (k == "LEFT") adjustVol(-1) else sel = (sel - 1 + size) % size
                 "alarmEdit" -> editMove(k)
@@ -833,6 +852,7 @@ fun Phone() {
             "DOWN", "RIGHT" -> when (screen) {
                 "snake" -> snake.turn(if (k == "DOWN") 0 to 1 else 1 to 0)
                 "calendar" -> monthOffset++
+                "recording" -> togglePause()
                 "volume" -> if (k == "RIGHT") adjustVol(1) else sel = (sel + 1) % size
                 "alarmEdit" -> editMove(k)
                 "calc" -> calc.op(if (k == "DOWN") '−' else '÷')
@@ -847,7 +867,6 @@ fun Phone() {
                 "menu" -> when (val id = MENU[sel].second) {
                     "zalo" -> launchPkg("com.zing.zalo", "Zalo")
                     "youtube" -> launchPkg("com.google.android.youtube", "YouTube")
-                    "recorder" -> launch(Intent(ctx, RecorderActivity::class.java), inLcd = false)
                     else -> open(id)
                 }
                 "apps" -> apps.getOrNull(sel)?.let { a ->
@@ -885,6 +904,7 @@ fun Phone() {
             "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) }
                 else if (screen == "compose" && cStage == 0 && cTo.isNotEmpty()) { cTo = cTo.dropLast(1); cName = "" }
                 else if (screen == "compose" && cStage == 1 && entry.text.isNotEmpty()) entry.backspace()
+                else if (screen == "recording") togglePause()
                 else back()
             "END" -> if (screen == "home") dial = "" else open("home")
             "CALL" -> when (screen) {
@@ -907,7 +927,7 @@ fun Phone() {
                 "compose" -> if (cStage == 0) {
                     if (k[0].isDigit()) { cTo += k; cName = "" } else if (k == "*" && cTo.isEmpty()) cTo = "+"
                 } else entry.key(k, SystemClock.uptimeMillis())
-                "recorder" -> if (k == "#" && sel > 0) deleteRec(sel)
+                "recorder" -> if (k == "#" && sel > 0) screen = "recConfirm"
             }
         }
     }
@@ -924,14 +944,15 @@ fun Phone() {
         "clock" -> "Sửa"; "calendar" -> "Hôm nay"
         "contacts" -> "Gọi"; "messages", "thread" -> "Chọn"; "msgview" -> "Trả lời"
         "compose" -> if (cStage == 1) "Gửi" else "Tiếp"
-        "calc" -> "Xóa"; "camera" -> "Chụp"; "recording" -> "Lưu"
+        "calc" -> "Xóa"; "camera" -> "Chụp"; "recording" -> "Lưu"; "recConfirm" -> "Có"
         "recorder" -> if (sel == 0) "Ghi" else if (playing != null && playing == recs.getOrNull(sel - 1)?.file?.absolutePath) "Dừng" else "Nghe"
         "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) "Xóa" else "Lưu"
         else -> ""
     }
     val right = when (screen) {
         "home" -> if (dial.isEmpty()) "" else "Xóa"
-        "reset" -> "Không"
+        "reset", "recConfirm" -> "Không"
+        "recording" -> if (recPaused) "Tiếp tục" else "Tạm dừng"
         "compose" -> if ((cStage == 0 && cTo.isNotEmpty()) || (cStage == 1 && entry.text.isNotEmpty())) "Xóa" else "Về"
         else -> "Về"
     }
@@ -1055,16 +1076,33 @@ fun Phone() {
                                 if (gIds.isNotEmpty()) gIdx = (gIdx + d + gIds.size) % gIds.size
                             }
                             "recorder" -> Column(Modifier.fillMaxSize()) {
-                                Hint("OK: ghi/nghe   #: xóa")
+                                val t = recTick
+                                Head("GHI ÂM  (${recs.size})")
+                                val pr = recs.firstOrNull { it.file.absolutePath == playing }
+                                Hint(if (pr != null) recProgress(pr) else "OK: ghi/nghe   #: xóa")
                                 Spacer(Modifier.height(4.dp))
-                                Box(Modifier.weight(1f)) { Lines(recLines(recs, playing, recTick), sel, tapItem, scroll) }
+                                Box(Modifier.weight(1f)) { Lines(recLines(recs, playing, t), sel, tapItem, scroll) }
                             }
-                            "recording" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.Center, Alignment.CenterHorizontally) {
-                                Text(if ((recTick / 2) % 2 == 0) "● ĐANG GHI ÂM" else "○ ĐANG GHI ÂM",
-                                    color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Text(recTick.let { mmss(SystemClock.elapsedRealtime() - Rec.startedAt) },
-                                    color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 56.sp)
-                                Text("OK: dừng và lưu", color = INK, fontFamily = MONO, fontSize = 14.sp)
+                            "recording" -> Column(Modifier.fillMaxSize()) {
+                                val t = recTick
+                                Head(if (recPaused) "‖ TẠM DỪNG" else if ((t / 2) % 2 == 0) "● ĐANG GHI ÂM" else "○ ĐANG GHI ÂM")
+                                Column(Modifier.weight(1f).fillMaxWidth().clickable { press("OK") }, Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
+                                    Text(mmss(Rec.elapsed()), color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 56.sp)
+                                    val lv = if (recPaused) 0f else (Rec.level() / 32767f).coerceIn(0f, 1f)
+                                    val bars = (Math.sqrt(lv.toDouble()) * 16).toInt().coerceIn(0, 16)
+                                    Text("█".repeat(bars) + "░".repeat(16 - bars), color = INK, fontFamily = MONO, fontSize = 18.sp)
+                                    Text("OK: lưu    ▲▼: tạm dừng", color = INK, fontFamily = MONO, fontSize = 13.sp)
+                                }
+                            }
+                            "recConfirm" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+                                val r = recs.getOrNull(sel - 1)
+                                Text("Xóa bản ghi này?", color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp, textAlign = TextAlign.Center)
+                                if (r != null) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(r.file.lastModified())) +
+                                        "  " + mmss(r.dur), color = INK, fontFamily = MONO, fontSize = 14.sp)
+                                }
                             }
                             "snake" -> Column(Modifier.fillMaxSize()) {
                                 Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}   Cấp: ${snake.score / 10 + 1}",

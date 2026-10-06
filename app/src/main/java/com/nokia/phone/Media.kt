@@ -274,3 +274,10 @@ fun recLines(recs: List<RecItem>, playing: String?, @Suppress("UNUSED_PARAMETER"
         val stamp = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(r.file.lastModified()))
         (if (on) "■ " else "▶ ") + stamp + "  " + (if (on) mmss(Play.pos()) + "/" else "") + mmss(r.dur)
     }
+
+/** Dòng tiến trình khi đang nghe một bản ghi: ▶ 0:05 ███░░░░░░░ 0:29 */
+fun recProgress(r: RecItem): String {
+    val pos = Play.pos()
+    val b = if (r.dur > 0) (pos * 10f / r.dur).toInt().coerceIn(0, 10) else 0
+    return "▶ " + mmss(pos) + " " + "█".repeat(b) + "░".repeat(10 - b) + " " + mmss(r.dur)
+}

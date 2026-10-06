@@ -79,20 +79,6 @@
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|density|uiMode|fontScale"
             android:screenOrientation="portrait" />
 
-        <!-- App con Ghi âm (cũng có biểu tượng riêng trong danh sách ứng dụng) -->
-        <activity
-            android:name=".RecorderActivity"
-            android:label="Ghi âm Nokia"
-            android:exported="true"
-            android:resizeableActivity="true"
-            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|density|uiMode|fontScale"
-            android:screenOrientation="portrait">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
         <!-- Nhận cuộc gọi: chỉ chạy khi Nokia Phone là ứng dụng gọi điện mặc định -->
         <service
             android:name=".NokiaInCallService"
