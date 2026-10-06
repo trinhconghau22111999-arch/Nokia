@@ -42,3 +42,6 @@ Menu -> Ghi âm (hoặc biểu tượng "Ghi âm Nokia" riêng): ghi, tạm dừ
 Bản ghi lưu trong bộ nhớ riêng của app (`files/recordings`), dùng chung với tính năng ghi âm cuộc gọi.
 Ghi âm cuộc gọi thu bằng micro nên cần bật loa ngoài mới có tiếng bên kia; hãy báo cho người đối diện khi ghi âm.
 
+Xóa tin nhắn thật: Menu -> Cài đặt -> "Ứng dụng nhắn tin" -> chọn Nokia làm ứng dụng SMS mặc định.
+Khi đó xóa tin (phím #) sẽ xóa hẳn khỏi hộp thư của máy, tin gửi/nhận được app tự lưu.
+Chưa đặt làm mặc định thì "xóa" chỉ ẩn khỏi app. Lưu ý: chưa hỗ trợ MMS (tin có ảnh).

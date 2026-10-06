@@ -1,5 +1,7 @@
 package com.nokia.phone
 
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.os.Build
 import android.provider.ContactsContract
@@ -86,7 +88,7 @@ object Contacts {
 
 // ---------------------------------------------------------------- Tin nhắn
 
-data class Sms(val addr: String, val body: String, val date: Long, val sent: Boolean)
+data class Sms(val addr: String, val body: String, val date: Long, val sent: Boolean, val id: Long = -1L)
 data class SmsThread(val key: String, val addr: String, val name: String, val last: Sms)
 
 /** Khóa gộp hội thoại: 9 số cuối (để +84.. và 0.. về cùng một người), số/chữ khác thì giữ nguyên. */
@@ -118,26 +120,39 @@ object SmsRepo {
         }
     } catch (_: Exception) { emptyList() }
 
+    private fun writeLocal(ctx: Context, list: List<Sms>) {
+        val a = JSONArray()
+        list.take(100).forEach { a.put(JSONObject().put("a", it.addr).put("b", it.body).put("d", it.date)) }
+        prefs(ctx).edit().putString("list", a.toString()).apply()
+    }
+
     private fun saveSent(ctx: Context, addr: String, body: String) {
         val cur = localSent(ctx).toMutableList()
         cur.add(0, Sms(addr, body, System.currentTimeMillis(), true))
-        val a = JSONArray()
-        cur.take(100).forEach { a.put(JSONObject().put("a", it.addr).put("b", it.body).put("d", it.date)) }
-        prefs(ctx).edit().putString("list", a.toString()).apply()
+        writeLocal(ctx, cur)
     }
+
+    /** Là ứng dụng SMS mặc định: phải tự ghi tin đã gửi vào hộp thư hệ thống. */
+    private fun storeSent(ctx: Context, addr: String, body: String): Boolean = try {
+        val v = ContentValues().apply {
+            put("address", addr); put("body", body)
+            put("date", System.currentTimeMillis()); put("read", 1)
+        }
+        ctx.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, v) != null
+    } catch (_: Exception) { false }
 
     fun loadAll(ctx: Context): List<Sms> {
         val out = ArrayList<Sms>()
         try {
             ctx.contentResolver.query(
-                Telephony.Sms.CONTENT_URI, arrayOf("address", "body", "date", "type"),
+                Telephony.Sms.CONTENT_URI, arrayOf("address", "body", "date", "type", "_id"),
                 null, null, "date DESC"
             )?.use { c ->
                 var n = 0
                 while (c.moveToNext() && n < 3000) {
                     val type = c.getInt(3)
                     if (type == 3) continue          // bản nháp
-                    out.add(Sms(c.getString(0) ?: "", c.getString(1) ?: "", c.getLong(2), type != 1))
+                    out.add(Sms(c.getString(0) ?: "", c.getString(1) ?: "", c.getLong(2), type != 1, c.getLong(4)))
                     n++
                 }
             }
@@ -154,8 +169,8 @@ object SmsRepo {
     }
 
     // ---- Xóa tin ----
-    // App không phải ứng dụng SMS mặc định nên Android không cho xóa trong hộp thư hệ thống.
-    // "Xóa" ở đây = ẩn khỏi Tin nhắn của app này (nhớ lâu dài); bản gốc vẫn còn trong app Tin nhắn của máy.
+    // Là ứng dụng SMS mặc định => xóa thật khỏi hộp thư hệ thống.
+    // Chưa là mặc định => Android không cho xóa, chỉ ẩn khỏi Tin nhắn của app này (bản gốc vẫn còn).
     private fun hprefs(ctx: Context) = ctx.getSharedPreferences("sms_hidden", Context.MODE_PRIVATE)
     fun smsId(s: Sms): String = addrKey(s.addr) + "|" + s.date + "|" + s.body.hashCode()
     private fun hiddenIds(ctx: Context): Set<String> = hprefs(ctx).getStringSet("ids", emptySet()) ?: emptySet()
@@ -163,6 +178,23 @@ object SmsRepo {
         val cur = HashSet(hiddenIds(ctx))     // bản sao: Set trả về từ SharedPreferences không được sửa trực tiếp
         list.forEach { cur.add(smsId(it)) }
         hprefs(ctx).edit().putStringSet("ids", cur).apply()
+    }
+
+    /** Trả về true nếu đã xóa thật khỏi máy, false nếu chỉ ẩn trong app. */
+    fun delete(ctx: Context, list: List<Sms>): Boolean {
+        if (!isDefaultSms(ctx)) { hide(ctx, list); return false }
+        val failed = ArrayList<Sms>()
+        val localIds = list.filter { it.id < 0 }.map { smsId(it) }.toSet()
+        for (s in list) {
+            if (s.id < 0) continue
+            val n = try {
+                ctx.contentResolver.delete(ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, s.id), null, null)
+            } catch (_: Exception) { 0 }
+            if (n <= 0) failed.add(s)
+        }
+        if (localIds.isNotEmpty()) writeLocal(ctx, localSent(ctx).filter { smsId(it) !in localIds })
+        if (failed.isNotEmpty()) hide(ctx, failed)     // xóa hụt thì ít nhất ẩn đi
+        return failed.isEmpty()
     }
 
     @Suppress("DEPRECATION")
@@ -176,7 +208,7 @@ object SmsRepo {
         val parts = sm.divideMessage(body)
         if (parts.size > 1) sm.sendMultipartTextMessage(to, null, parts, null, null)
         else sm.sendTextMessage(to, null, body, null, null)
-        saveSent(ctx, to, body)
+        if (!(isDefaultSms(ctx) && storeSent(ctx, to, body))) saveSent(ctx, to, body)
         true
     } catch (_: Exception) { false }
 }

@@ -28,6 +28,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.provider.Telephony
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -174,6 +175,9 @@ class MainActivity : ComponentActivity() {
         val u = i?.data ?: return
         if (u.scheme == "tel" && (i.action == Intent.ACTION_DIAL || i.action == Intent.ACTION_VIEW))
             NokiaState.pendingDial = dialable(Uri.decode(u.schemeSpecificPart))
+        // SENDTO sms:/smsto:... từ app khác -> mở màn hình soạn tin tới số đó
+        if (i.action == Intent.ACTION_SENDTO && (u.scheme == "sms" || u.scheme == "smsto" || u.scheme == "mms" || u.scheme == "mmsto"))
+            NokiaState.pendingSms = dialable(Uri.decode(u.schemeSpecificPart.substringBefore('?')))
     }
 
     private fun hideBars() {
@@ -384,6 +388,7 @@ fun Phone() {
     var lockAt by remember { mutableLongStateOf(0L) }
     var btOn by remember { mutableStateOf(false) }
     var dialerOn by remember { mutableStateOf(false) }
+    var smsOn by remember { mutableStateOf(isDefaultSms(ctx)) }
     var infoTick by remember { mutableIntStateOf(0) }      // làm tươi số liệu (wifi, pin, SIM...) mỗi giây
     var wifiNets by remember { mutableStateOf(listOf<WifiNet>()) }
     var power by remember { mutableStateOf(PowerStore.load(ctx)) }
@@ -498,7 +503,7 @@ fun Phone() {
     }
     LaunchedEffect(screen) { if (screen == "snake") while (true) { delay(snake.stepMs()); snake.step() } }
     LaunchedEffect(lockAt) { if (lockAt != 0L) { delay(4000); lockAt = 0L } }
-    LaunchedEffect(screen) { if (screen == "settings") while (true) { btOn = isBtOn(ctx); dialerOn = isDefaultDialer(ctx); delay(600) } }
+    LaunchedEffect(screen) { if (screen == "settings") while (true) { btOn = isBtOn(ctx); dialerOn = isDefaultDialer(ctx); smsOn = isDefaultSms(ctx); delay(600) } }
     LaunchedEffect(screen) { if (screen in INFO_SCREENS) while (true) { infoTick++; delay(1000) } }
     LaunchedEffect(gIdx, gIds, screen) {
         if (screen == "gallery" && gIds.isNotEmpty()) {
@@ -754,6 +759,23 @@ fun Phone() {
             .putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, ctx.packageName)
         try { dialerReq.launch(i) } catch (_: Exception) { Toast.makeText(ctx, "Máy không hỗ trợ đổi ứng dụng gọi điện", Toast.LENGTH_SHORT).show() }
     }
+    val smsReq = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        smsOn = isDefaultSms(ctx)
+        Toast.makeText(ctx, if (smsOn) "Đã đặt phonecuibap làm ứng dụng nhắn tin" else "Chưa đặt làm ứng dụng nhắn tin", Toast.LENGTH_SHORT).show()
+        if (smsOn && Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    fun requestSmsApp() {
+        if (isDefaultSms(ctx)) { Toast.makeText(ctx, "Đã là ứng dụng nhắn tin mặc định", Toast.LENGTH_SHORT).show(); return }
+        try {
+            val i = if (Build.VERSION.SDK_INT >= 29)
+                (ctx.getSystemService(Context.ROLE_SERVICE) as RoleManager).createRequestRoleIntent(RoleManager.ROLE_SMS)
+            else Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT)
+                .putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, ctx.packageName)
+            smsReq.launch(i)
+        } catch (_: Exception) { Toast.makeText(ctx, "Máy không hỗ trợ đổi ứng dụng nhắn tin", Toast.LENGTH_SHORT).show() }
+    }
     fun startEdit(i: Int) {
         editIdx = i
         val a = alarms.getOrNull(i) ?: Alarm(7, 0, true)
@@ -878,6 +900,7 @@ fun Phone() {
     fun loadContacts() { scope.launch { val c = withContext(Dispatchers.IO) { Contacts.load(ctx) }; if (screen == "contacts" || inSms()) contacts = c; if (screen == "contacts") ctLoaded = true } }
     fun loadRecs() { scope.launch { val r = withContext(Dispatchers.IO) { Rec.list(ctx) }; if (inRec()) recs = r } }
     fun loadSms(after: (() -> Unit)? = null) {
+        smsOn = isDefaultSms(ctx)
         scope.launch {
             val hasC = granted(Manifest.permission.READ_CONTACTS)
             val (all, cs) = withContext(Dispatchers.IO) {
@@ -930,12 +953,12 @@ fun Phone() {
         delTarget = emptyList()
         screen = back
         scope.launch {
-            withContext(Dispatchers.IO) { SmsRepo.hide(ctx, target) }
+            val real = withContext(Dispatchers.IO) { SmsRepo.delete(ctx, target) }
             loadSms {
                 if (back == "messages") sel = sel.coerceIn(0, threads.size)
                 else if (threadMsgs.isEmpty()) { curKey = ""; screen = "messages"; sel = 0 }   // hết tin trong hội thoại
                 else sel = sel.coerceIn(0, threadMsgs.size)
-                Toast.makeText(ctx, "Đã xóa khỏi app", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, if (real) "Đã xóa" else "Đã xóa khỏi app (chưa xóa hẳn khỏi máy)", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -946,6 +969,7 @@ fun Phone() {
         screen = "compose"; sel = 0
         if (to.isEmpty() && contacts.isEmpty() && granted(Manifest.permission.READ_CONTACTS)) loadContacts()
     }
+    LaunchedEffect(tick) { NokiaState.pendingSms?.let { n -> NokiaState.pendingSms = null; if (n.isNotEmpty()) startCompose(n, n, "new") } }
     fun doSend() {
         val body = entry.text.trim()
         if (body.isEmpty() || cTo.isEmpty()) {
@@ -1201,6 +1225,7 @@ fun Phone() {
                         "power" -> open("power")
                         "bt" -> toggleBt()
                         "dialer" -> requestDialer()
+                        "smsapp" -> requestSmsApp()
                         else -> open("reset")
                     }
                 }
@@ -1391,7 +1416,7 @@ fun Phone() {
                             }
                             "calendar" -> MonthCalendar(monthOffset) { d -> monthOffset += d }
                             "settings" -> { val t = infoTick
-                                Lines(SETTINGS.map { settingLabel(ctx, it, btOn, dialerOn) }, sel, tapItem, scroll) }
+                                Lines(SETTINGS.map { settingLabel(ctx, it, btOn, dialerOn, smsOn) }, sel, tapItem, scroll) }
                             "wifi" -> { val t = infoTick
                                 if (!granted(Manifest.permission.ACCESS_FINE_LOCATION)) Msg("Cần quyền Vị trí để quét wifi\n(bấm OK để cấp)")
                                 else Lines(wifiLines(ctx, wifiNets), sel, tapItem, scroll) }
@@ -1539,7 +1564,7 @@ fun Phone() {
                                     color = INK, fontFamily = MONO, fontSize = 14.sp, textAlign = TextAlign.Center,
                                     maxLines = 3, overflow = TextOverflow.Ellipsis)
                                 Spacer(Modifier.height(8.dp))
-                                Text("Chỉ xóa trong app này", color = INK.copy(alpha = 0.6f), fontFamily = MONO, fontSize = 12.sp)
+                                Text(if (smsOn) "Xóa hẳn khỏi máy" else "Chỉ xóa trong app này", color = INK.copy(alpha = 0.6f), fontFamily = MONO, fontSize = 12.sp)
                             }
                             "recConfirm" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {
                                 val r = recs.getOrNull(sel - 1)
