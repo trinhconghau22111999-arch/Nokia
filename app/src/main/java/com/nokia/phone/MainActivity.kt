@@ -1,6 +1,10 @@
 package com.nokia.phone
 
+import android.Manifest
+import android.app.ActivityOptions
+import android.graphics.Rect
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -9,6 +13,9 @@ import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -37,6 +44,8 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
@@ -47,6 +56,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -73,13 +83,13 @@ data class AppInfo(val label: String, val pkg: String)
 val homeTick = mutableIntStateOf(0)
 
 class Snake {
-    val w = 14; val h = 8
-    var body by mutableStateOf(listOf(5 to 4, 4 to 4, 3 to 4))
+    val w = 10; val h = 14
+    var body by mutableStateOf(listOf(5 to 7, 4 to 7, 3 to 7))
     var dir by mutableStateOf(1 to 0)
-    var food by mutableStateOf(10 to 3)
+    var food by mutableStateOf(8 to 3)
     var dead by mutableStateOf(false)
     var score by mutableIntStateOf(0)
-    fun reset() { body = listOf(5 to 4, 4 to 4, 3 to 4); dir = 1 to 0; dead = false; score = 0 }
+    fun reset() { body = listOf(5 to 7, 4 to 7, 3 to 7); dir = 1 to 0; dead = false; score = 0 }
     fun turn(d: Pair<Int, Int>) { if (d.first != -dir.first || d.second != -dir.second) dir = d }
     fun step() {
         if (dead) return
@@ -134,6 +144,7 @@ fun Phone() {
     var buzz by remember { mutableStateOf(true) }
     var now by remember { mutableStateOf(timeNow()) }
     var apps by remember { mutableStateOf(listOf<AppInfo>()) }
+    var lcdRect by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val snake = remember { Snake() }
     val focus = remember { FocusRequester() }
     val haptic = LocalHapticFeedback.current
@@ -143,8 +154,28 @@ fun Phone() {
     val tick = homeTick.intValue
     LaunchedEffect(tick) { if (tick > 0) { screen = "home"; sel = 0 } }
 
+    /** Mở app trong cửa sổ có kích thước đúng bằng vùng nội dung của màn hình LCD nhỏ (cần bật cửa sổ tự do). */
     fun launch(i: Intent) {
-        try { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        try {
+            val opts = ActivityOptions.makeBasic()
+            lcdRect?.let { r ->
+                opts.setLaunchBounds(Rect(r.left.roundToInt(), r.top.roundToInt(), r.right.roundToInt(), r.bottom.roundToInt()))
+            }
+            ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), opts.toBundle())
+        } catch (_: Exception) {}
+    }
+    fun dialScreen(n: String) = launch(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(n))))
+    fun placeCall(n: String) {
+        try {
+            ctx.startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(n)))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) { dialScreen(n) }
+    }
+    var pendingCall by remember { mutableStateOf("") }
+    val callPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        val n = pendingCall
+        pendingCall = ""
+        if (n.isNotEmpty()) { if (ok) placeCall(n) else dialScreen(n) }
     }
     fun loadApps() {
         val pm = ctx.packageManager
@@ -160,7 +191,7 @@ fun Phone() {
 
     fun press(k: String) {
         if (buzz) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 2; else -> 1 }
+        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 3; else -> 1 }
         when (k) {
             "UP", "LEFT" -> if (screen == "snake") snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
                 else sel = (sel - 1 + size) % size
@@ -176,13 +207,22 @@ fun Phone() {
                 "apps" -> apps.getOrNull(sel)?.let { a ->
                     ctx.packageManager.getLaunchIntentForPackage(a.pkg)?.let { launch(it) }
                 }
-                "settings" -> if (sel == 0) buzz = !buzz else launch(Intent(Settings.ACTION_HOME_SETTINGS))
+                "settings" -> when (sel) {
+                    0 -> buzz = !buzz
+                    1 -> launch(Intent(Settings.ACTION_HOME_SETTINGS))
+                    else -> launch(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+                }
                 "snake" -> if (snake.dead) snake.reset()
             }
             "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) } else back()
             "END" -> if (screen == "home") dial = "" else open("home")
-            "CALL" -> if (screen == "home" && dial.isNotEmpty())
-                launch(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(dial))))
+            "CALL" -> {
+                if (screen == "home" && dial.isNotEmpty()) {
+                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE)
+                        == PackageManager.PERMISSION_GRANTED) placeCall(dial)
+                    else { pendingCall = dial; callPerm.launch(Manifest.permission.CALL_PHONE) }
+                }
+            }
             else -> if (screen == "home") dial += k
                 else if (screen == "snake") when (k) {
                     "2" -> snake.turn(0 to -1); "8" -> snake.turn(0 to 1)
@@ -202,7 +242,9 @@ fun Phone() {
     }
     val right = when (screen) { "home" -> if (dial.isEmpty()) "" else "Xóa"; else -> "Về" }
 
-    Column(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // Tỉ lệ gốc của màn hình điện thoại thật -> làm chuẩn cho màn hình LCD nhỏ
+        val ratio = maxWidth / maxHeight
         Column(
             Modifier.fillMaxSize()
                 .background(Brush.verticalGradient(listOf(Color(0xFF4469BC), Color(0xFF223C78))))
@@ -232,7 +274,9 @@ fun Phone() {
                 color = Color(0xFFE6ECFA), fontWeight = FontWeight.Black, fontSize = 12.sp, letterSpacing = 4.sp)
 
             // Màn hình LCD nhỏ (phần duy nhất thay đổi)
-            Box(Modifier.fillMaxWidth().weight(0.33f).clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
+            Box(Modifier.fillMaxWidth().weight(0.72f), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxHeight().aspectRatio(ratio, matchHeightConstraintsFirst = true)
+                .clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
                 Column(Modifier.fillMaxSize().background(LCD)) {
                     Row(Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 1.dp)) {
                         Text("▂▄▆", color = LCD, fontFamily = MONO, fontSize = 11.sp)
@@ -241,7 +285,8 @@ fun Phone() {
                         Spacer(Modifier.width(8.dp))
                         Text("▮▮▮", color = LCD, fontFamily = MONO, fontSize = 11.sp)
                     }
-                    Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp)) {
+                    Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { lcdRect = it.boundsInWindow() }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)) {
                         when (screen) {
                             "home" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
                                 Text("NOKIA", color = INK, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
@@ -253,7 +298,7 @@ fun Phone() {
                             "clock" -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                                 Text(now, color = INK, fontSize = 34.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                             }
-                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher"), sel, tapItem, scroll)
+                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher", "Cửa sổ nhỏ (dev)"), sel, tapItem, scroll)
                             "snake" -> Column(Modifier.fillMaxSize()) {
                                 Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}",
                                     color = INK, fontFamily = MONO, fontSize = 12.sp)
@@ -268,8 +313,10 @@ fun Phone() {
                                     }
                                 }) {
                                     val c = minOf(size.width / snake.w, size.height / snake.h)
-                                    snake.body.forEach { (x, y) -> drawRect(INK, Offset(x * c, y * c), Size(c - 2, c - 2)) }
-                                    drawRect(INK, Offset(snake.food.first * c + c / 4, snake.food.second * c + c / 4), Size(c / 2, c / 2))
+                                    val ox = (size.width - c * snake.w) / 2f
+                                    val oy = (size.height - c * snake.h) / 2f
+                                    snake.body.forEach { (x, y) -> drawRect(INK, Offset(ox + x * c, oy + y * c), Size(c - 2, c - 2)) }
+                                    drawRect(INK, Offset(ox + snake.food.first * c + c / 4, oy + snake.food.second * c + c / 4), Size(c / 2, c / 2))
                                 }
                             }
                         }
@@ -285,6 +332,7 @@ fun Phone() {
                     }
                 }
             }
+            }
 
             Spacer(Modifier.height(6.dp))
             Keys(::press)
@@ -294,7 +342,7 @@ fun Phone() {
 
 @Composable
 fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -> Unit) {
-    val visible = 6
+    val visible = 9
     val start = (sel - visible / 2).coerceIn(0, maxOf(0, items.size - visible))
     Column(Modifier.fillMaxWidth().fillMaxHeight().pointerInput(Unit) {
         var acc = 0f
@@ -357,18 +405,18 @@ fun NumKey(d: String, sub: String, mod: Modifier, onClick: () -> Unit) {
 @Composable
 fun ColumnScope.Keys(p: (String) -> Unit) {
     val dk = Color(0xFFB4BCCB)
-    // [Phím mềm dẹt + Gọi] [D-pad tròn] [Phím mềm dẹt + Tắt]
-    Row(Modifier.fillMaxWidth().weight(0.27f)) {
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            K(Modifier.fillMaxWidth().height(34.dp), shape = RoundedCornerShape(12.dp), onClick = { p("SOFTL") }) { Glyph("●", 12) }
-            Spacer(Modifier.weight(0.15f))
-            K(Modifier.weight(1f).fillMaxWidth(), onClick = { p("CALL") }) {
-                PhoneIcon(GREEN, false, Modifier.size(38.dp))
+    // Bố cục như Nokia thật: phím mềm (cao) ở trên, Gọi/Tắt (thấp) ở dưới, D-pad tròn ở giữa.
+    BoxWithConstraints(Modifier.fillMaxWidth().weight(0.27f), contentAlignment = Alignment.Center) {
+        val s = minOf(maxHeight, maxWidth * 0.48f)
+        val c = s / 3
+        Row(Modifier.fillMaxWidth().height(s)) {
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
+                K(Modifier.fillMaxWidth().height(s * 0.42f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTL") }) { Glyph("●", 14) }
+                K(Modifier.fillMaxWidth().height(s * 0.28f), shape = RoundedCornerShape(14.dp), onClick = { p("CALL") }) {
+                    PhoneIcon(GREEN, false, Modifier.size(26.dp))
+                }
             }
-        }
-        BoxWithConstraints(Modifier.weight(1.6f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-            val c = minOf(maxWidth, maxHeight) / 3
-            Column(Modifier.size(c * 3)) {
+            Column(Modifier.width(s).fillMaxHeight()) {
                 Row(Modifier.height(c)) {
                     Spacer(Modifier.size(c))
                     K(Modifier.size(c), shape = CircleShape, onClick = { p("UP") }) { Glyph("▲", 14) }
@@ -385,12 +433,11 @@ fun ColumnScope.Keys(p: (String) -> Unit) {
                     Spacer(Modifier.size(c))
                 }
             }
-        }
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            K(Modifier.fillMaxWidth().height(34.dp), shape = RoundedCornerShape(12.dp), onClick = { p("SOFTR") }) { Glyph("●", 12) }
-            Spacer(Modifier.weight(0.15f))
-            K(Modifier.weight(1f).fillMaxWidth(), onClick = { p("END") }) {
-                PhoneIcon(RED, true, Modifier.size(38.dp))
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
+                K(Modifier.fillMaxWidth().height(s * 0.42f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTR") }) { Glyph("●", 14) }
+                K(Modifier.fillMaxWidth().height(s * 0.28f), shape = RoundedCornerShape(14.dp), onClick = { p("END") }) {
+                    PhoneIcon(RED, true, Modifier.size(26.dp))
+                }
             }
         }
     }
