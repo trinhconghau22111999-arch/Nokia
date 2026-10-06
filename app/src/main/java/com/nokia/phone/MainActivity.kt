@@ -41,6 +41,10 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.MarqueeAnimationMode
+import androidx.compose.foundation.MarqueeSpacing
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -1494,6 +1498,7 @@ fun Phone() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -> Unit, detail: List<String> = emptyList()) {
     // detail: các dòng chữ nhỏ chèn ngay dưới ô đang chọn (không chọn được, không chiếm số thứ tự)
@@ -1521,11 +1526,24 @@ fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -
                     }
                 } else {
                     val i = if (row > sel + extra) row - extra else row
-                    Box(Modifier.fillMaxWidth().height(rowH).clickable { onTap(i) }
-                        .background(if (i == sel) INK else LCD).padding(horizontal = 6.dp),
-                        contentAlignment = Alignment.CenterStart) {
-                        Text(items[i], color = if (i == sel) LCD else INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // key(i): đổi ô chọn thì chữ chạy bắt đầu lại từ đầu
+                    androidx.compose.runtime.key(i) {
+                        Box(Modifier.fillMaxWidth().height(rowH).clickable { onTap(i) }
+                            .background(if (i == sel) INK else LCD).padding(horizontal = 6.dp),
+                            contentAlignment = Alignment.CenterStart) {
+                            if (i == sel) {
+                                // Ô đang chọn mà tên dài hơn màn hình: chữ chạy ngang cho đọc hết.
+                                // Dừng ~1,2 giây ở đầu để đọc trước, rồi chạy 40dp/giây (vừa đọc), hết thì lặp lại.
+                                Text(items[i], Modifier.basicMarquee(
+                                        iterations = Int.MAX_VALUE, animationMode = MarqueeAnimationMode.Immediately,
+                                        spacing = MarqueeSpacing(32.dp), velocity = 40.dp),
+                                    color = LCD, fontFamily = MONO, fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+                            } else {
+                                Text(items[i], color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
                     }
                 }
             }
