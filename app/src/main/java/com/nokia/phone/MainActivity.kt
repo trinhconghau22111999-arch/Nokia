@@ -826,8 +826,8 @@ fun Phone() {
     fun editMove(k: String) {
         val fields = if (screen == "powerEdit") 3 else if (editIdx < alarms.size) 4 else 3
         when (k) {
-            "LEFT" -> editField = (editField - 1 + fields) % fields
-            "RIGHT" -> editField = (editField + 1) % fields
+            "LEFT" -> editField = maxOf(editField - 1, 0)
+            "RIGHT" -> editField = minOf(editField + 1, fields - 1)
             else -> {
                 val d = if (k == "UP") 1 else -1
                 when (editField) {
@@ -1001,7 +1001,7 @@ fun Phone() {
     }
     fun pickContact(d: Int) {
         if (contacts.isEmpty()) return
-        cPick = if (cPick < 0) (if (d > 0) 0 else contacts.size - 1) else (cPick + d + contacts.size) % contacts.size
+        cPick = if (cPick < 0) (if (d > 0) 0 else contacts.size - 1) else (cPick + d).coerceIn(0, contacts.size - 1)
         cTo = contacts[cPick].number; cName = contacts[cPick].name
     }
 
@@ -1059,12 +1059,12 @@ fun Phone() {
             if (screen == "music") { tracks = l; mLoaded = true }
         }
     }
-    /** Phát bài thứ i; hết bài thì tự sang bài kế (hết danh sách thì quay lại bài đầu). */
+    /** Phát bài thứ i; hết bài thì tự sang bài kế (hết danh sách thì dừng). */
     fun playTrack(i: Int) {
         val t = tracks.getOrNull(i) ?: return
         mCur = i; sel = i
         val ok = Music.play(ctx, t,
-            onEnd = { if (tracks.isNotEmpty()) playTrack((i + 1) % tracks.size) },
+            onEnd = { if (i + 1 < tracks.size) playTrack(i + 1) },
             onError = { mCur = -1; Toast.makeText(ctx, "Không phát được bài này", Toast.LENGTH_SHORT).show() })
         if (!ok) { mCur = -1; Toast.makeText(ctx, "Không phát được bài này", Toast.LENGTH_SHORT).show() }
     }
@@ -1072,7 +1072,7 @@ fun Phone() {
     fun musicStep(d: Int) {
         if (tracks.isEmpty()) return
         val base = if (mCur in tracks.indices) mCur else sel
-        playTrack((base + d + tracks.size) % tracks.size)
+        playTrack((base + d).coerceIn(0, tracks.size - 1))
     }
     fun adjustMusicVol(d: Int) {
         val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -1180,13 +1180,13 @@ fun Phone() {
         when (k) {
             "UP", "LEFT" -> when (screen) {
                 "home" -> shortcut(if (k == "UP") "clock" else "calllog")      // ▲ Đồng hồ, ◀ Nhật ký
-                "music" -> if (k == "LEFT") musicStep(-1) else sel = (sel - 1 + size) % size
+                "music" -> if (k == "LEFT") musicStep(-1) else sel = maxOf(sel - 1, 0)
                 "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
-                "apps" -> if (appsMode == 1) gridMove(if (k == "UP") -APP_COLS else -1) else sel = (sel - 1 + size) % size
+                "apps" -> if (appsMode == 1) gridMove(if (k == "UP") -APP_COLS else -1) else sel = maxOf(sel - 1, 0)
                 "recording" -> if (k == "UP") togglePause()   // chỉ ▲ tạm dừng / tiếp tục; ◀ không làm gì
                 "calendar" -> if (k == "LEFT") monthOffset--   // ▲▼ không phản hồi
-                "volume" -> if (k == "LEFT") adjustVol(-1) else sel = (sel - 1 + size) % size
-                "brightness" -> if (k == "LEFT" && sel == 0) adjustBright(-1) else sel = (sel - 1 + size) % size
+                "volume" -> if (k == "LEFT") adjustVol(-1) else sel = maxOf(sel - 1, 0)
+                "brightness" -> if (k == "LEFT" && sel == 0) adjustBright(-1) else sel = maxOf(sel - 1, 0)
                 "alarmEdit", "powerEdit" -> editMove(k)
                 "calc" -> calc.op(if (k == "UP") '+' else '×')
                 "gallery" -> if (gIds.isNotEmpty()) gIdx = maxOf(gIdx - 1, 0)   // không nhảy vòng xuống cuối danh sách
@@ -1194,25 +1194,25 @@ fun Phone() {
                 else if (camFront) Toast.makeText(ctx, "Camera trước không có đèn flash", Toast.LENGTH_SHORT).show()
                 else if (!cam.hasFlash) Toast.makeText(ctx, "Máy không có đèn flash", Toast.LENGTH_SHORT).show()
                 else flash = !flash
-                "msgview" -> mv = (mv - 1 + size) % size
+                "msgview" -> mv = maxOf(mv - 1, 0)
                 "compose" -> if (cStage == 0) pickContact(-1)
-                else -> sel = (sel - 1 + size) % size
+                else -> sel = maxOf(sel - 1, 0)
             }
             "DOWN", "RIGHT" -> when (screen) {
                 "home" -> shortcut(if (k == "DOWN") "calc" else "music")       // ▼ Máy tính, ▶ Nhạc
-                "music" -> if (k == "RIGHT") musicStep(1) else sel = (sel + 1) % size
+                "music" -> if (k == "RIGHT") musicStep(1) else sel = minOf(sel + 1, size - 1)
                 "snake" -> snake.turn(if (k == "DOWN") 0 to 1 else 1 to 0)
-                "apps" -> if (appsMode == 1) gridMove(if (k == "DOWN") APP_COLS else 1) else sel = (sel + 1) % size
+                "apps" -> if (appsMode == 1) gridMove(if (k == "DOWN") APP_COLS else 1) else sel = minOf(sel + 1, size - 1)
                 "calendar" -> if (k == "RIGHT") monthOffset++   // ▲▼ không phản hồi
-                "volume" -> if (k == "RIGHT") adjustVol(1) else sel = (sel + 1) % size
-                "brightness" -> if (k == "RIGHT" && sel == 0) adjustBright(1) else sel = (sel + 1) % size
+                "volume" -> if (k == "RIGHT") adjustVol(1) else sel = minOf(sel + 1, size - 1)
+                "brightness" -> if (k == "RIGHT" && sel == 0) adjustBright(1) else sel = minOf(sel + 1, size - 1)
                 "alarmEdit", "powerEdit" -> editMove(k)
                 "calc" -> calc.op(if (k == "DOWN") '−' else '÷')
-                "gallery" -> if (gIds.isNotEmpty()) gIdx = (gIdx + 1) % gIds.size
+                "gallery" -> if (gIds.isNotEmpty()) gIdx = minOf(gIdx + 1, gIds.size - 1)
                 "camera" -> if (k == "RIGHT") { camFront = !camFront; flash = false }
-                "msgview" -> mv = (mv + 1) % size
+                "msgview" -> mv = minOf(mv + 1, size - 1)
                 "compose" -> if (cStage == 0) pickContact(1)
-                else -> sel = (sel + 1) % size
+                else -> sel = minOf(sel + 1, size - 1)
             }
             "OK", "SOFTL" -> when (screen) {
                 "home" -> open("menu")
@@ -1546,7 +1546,7 @@ fun Phone() {
                                 }
                             } else Msg("Cần quyền Máy ảnh")
                             "gallery" -> GalleryView(gOk, gLoaded, gIds.size, gIdx, gBmp) { d ->
-                                if (gIds.isNotEmpty()) { val n = gIdx + d; gIdx = if (n < 0) 0 else n % gIds.size }
+                                if (gIds.isNotEmpty()) { gIdx = (gIdx + d).coerceIn(0, gIds.size - 1) }
                             }
                             "recorder" -> Column(Modifier.fillMaxSize()) {
                                 val t = recTick

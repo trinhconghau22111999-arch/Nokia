@@ -117,8 +117,8 @@ class CallActivity : LcdActivity() {
             M_PICK -> {
                 val acc = accounts()
                 when (k) {
-                    "UP", "LEFT" -> if (acc.isNotEmpty()) sel = (sel - 1 + acc.size) % acc.size
-                    "DOWN", "RIGHT" -> if (acc.isNotEmpty()) sel = (sel + 1) % acc.size
+                    "UP", "LEFT" -> if (acc.isNotEmpty()) sel = maxOf(sel - 1, 0)
+                    "DOWN", "RIGHT" -> if (acc.isNotEmpty()) sel = minOf(sel + 1, acc.size - 1)
                     "OK", "SOFTL", "CALL" -> acc.getOrNull(sel)?.let { c.phoneAccountSelected(it, false) }
                     "END", "SOFTR" -> c.disconnect()
                 }
@@ -139,8 +139,8 @@ class CallActivity : LcdActivity() {
     private fun menuKey(k: String, c: Call) {
         val n = menuItems(c).size
         when (k) {
-            "UP", "LEFT" -> sel = (sel - 1 + n) % n
-            "DOWN", "RIGHT" -> sel = (sel + 1) % n
+            "UP", "LEFT" -> sel = maxOf(sel - 1, 0)
+            "DOWN", "RIGHT" -> sel = minOf(sel + 1, n - 1)
             "SOFTR" -> menuOpen = false
             "END" -> c.disconnect()
             "OK", "SOFTL" -> {
