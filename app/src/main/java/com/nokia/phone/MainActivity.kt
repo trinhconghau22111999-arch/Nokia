@@ -99,9 +99,9 @@ val KEYTXT = Color(0xFF1B2230)
 val MONO = FontFamily.Monospace
 
 val MENU = listOf(
-    "Ứng dụng" to "apps", "Danh bạ" to "contacts", "Tin nhắn" to "messages",
+    "Ứng dụng" to "apps", "Danh bạ" to "contacts", "Nhật ký" to "calllog", "Tin nhắn" to "messages",
     "Đồng hồ" to "clock", "Lịch" to "calendar", "Ghi âm" to "recorder",
-    "Máy tính" to "calc", "Máy ảnh" to "camera", "Thư viện" to "gallery",
+    "Máy tính" to "calc", "Máy ảnh" to "camera", "Thư viện" to "gallery", "Nhạc" to "music",
     "Rắn săn mồi" to "snake", "Zalo" to "zalo", "YouTube" to "youtube", "Cài đặt" to "settings"
 )
 val LETTERS = mapOf("2" to "ABC", "3" to "DEF", "4" to "GHI", "5" to "JKL",
@@ -425,6 +425,13 @@ fun Phone() {
     var recTick by remember { mutableIntStateOf(0) }
     var recording by remember { mutableStateOf(false) }
     var recPaused by remember { mutableStateOf(false) }
+    var calls by remember { mutableStateOf(listOf<CallEntry>()) }       // Nhật ký cuộc gọi
+    var clLoaded by remember { mutableStateOf(false) }
+    var tracks by remember { mutableStateOf(listOf<Track>()) }          // Trình phát nhạc
+    var mLoaded by remember { mutableStateOf(false) }
+    var mCur by remember { mutableIntStateOf(-1) }                      // chỉ số bài đang phát (-1 = chưa phát)
+    var mTick by remember { mutableIntStateOf(0) }
+    var fromHome by remember { mutableStateOf(false) }                  // app mở bằng phím mũi tên từ màn hình chờ -> Về = màn hình chờ
     var permThen by remember { mutableStateOf<(() -> Unit)?>(null) }
     var permMust by remember { mutableStateOf(listOf<String>()) }
     val cLines = remember(contacts) {
@@ -447,6 +454,7 @@ fun Phone() {
         }
         val p = prevScreen
         prevScreen = screen
+        if (screen == "home" || screen == "menu") fromHome = false
         if (grp(p) == grp(screen)) return@LaunchedEffect
         when (grp(p)) {
             "apps" -> { apps = emptyList(); AppIcons.clear() }
@@ -465,6 +473,8 @@ fun Phone() {
                 camOk = false; camFront = false; flash = false
             }
             "rec" -> { recs = emptyList(); playing = null }
+            "calllog" -> { calls = emptyList(); clLoaded = false }
+            "music" -> { Music.stop(); mCur = -1; tracks = emptyList(); mLoaded = false }
             "calc" -> calc.clear()
             "snake" -> snake.reset()
             "calendar" -> monthOffset = 0
@@ -484,6 +494,8 @@ fun Phone() {
     LaunchedEffect(playing, recording, screen) {
         if (screen == "recorder" || screen == "recording") while (playing != null || recording) { recTick++; delay(250) }
     }
+    LaunchedEffect(screen) { if (screen == "music") while (true) { mTick++; delay(300) } }
+    DisposableEffect(Unit) { onDispose { Music.stop() } }
     DisposableEffect(screen) {
         val s = screen
         onDispose {
@@ -812,6 +824,8 @@ fun Phone() {
         else listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     val camPerms = if (Build.VERSION.SDK_INT < 29) listOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE)
         else listOf(Manifest.permission.CAMERA)
+    val audioPerms = if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.READ_MEDIA_AUDIO)
+        else listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 
     fun inSms() = screen == "messages" || screen == "thread" || screen == "msgview" || screen == "compose"
     fun inRec() = screen == "recorder" || screen == "recConfirm" || screen == "recording"
@@ -930,6 +944,44 @@ fun Phone() {
         Toast.makeText(ctx, "Đã xóa", Toast.LENGTH_SHORT).show()
     }
 
+    // ---- Nhật ký cuộc gọi ----
+    fun loadCalls() {
+        scope.launch {
+            val l = withContext(Dispatchers.IO) { CallHistory.load(ctx) }
+            if (screen == "calllog") { calls = l; clLoaded = true }
+        }
+    }
+
+    // ---- Trình phát nhạc ----
+    fun loadTracks() {
+        scope.launch {
+            val l = withContext(Dispatchers.IO) { MusicLib.load(ctx) }
+            if (screen == "music") { tracks = l; mLoaded = true }
+        }
+    }
+    /** Phát bài thứ i; hết bài thì tự sang bài kế (hết danh sách thì quay lại bài đầu). */
+    fun playTrack(i: Int) {
+        val t = tracks.getOrNull(i) ?: return
+        mCur = i; sel = i
+        val ok = Music.play(ctx, t,
+            onEnd = { if (tracks.isNotEmpty()) playTrack((i + 1) % tracks.size) },
+            onError = { mCur = -1; Toast.makeText(ctx, "Không phát được bài này", Toast.LENGTH_SHORT).show() })
+        if (!ok) { mCur = -1; Toast.makeText(ctx, "Không phát được bài này", Toast.LENGTH_SHORT).show() }
+    }
+    /** ◀ ▶: bài trước / bài sau. */
+    fun musicStep(d: Int) {
+        if (tracks.isEmpty()) return
+        val base = if (mCur in tracks.indices) mCur else sel
+        playTrack((base + d + tracks.size) % tracks.size)
+    }
+    fun adjustMusicVol(d: Int) {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        try {
+            am.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                if (d > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
+        } catch (_: SecurityException) {}
+    }
+
     fun gridMove(d: Int) { if (apps.isNotEmpty()) sel = (sel + d).coerceIn(0, apps.lastIndex) }
     fun open(s: String) {
         screen = s; sel = 0; monthOffset = 0
@@ -943,6 +995,8 @@ fun Phone() {
             "power" -> power = PowerStore.load(ctx)
             "calc" -> calc.clear()
             "recorder" -> loadRecs()
+            "calllog" -> { clLoaded = false; need(listOf(Manifest.permission.READ_CALL_LOG)) { loadCalls() } }
+            "music" -> { mLoaded = false; mCur = -1; need(audioPerms) { loadTracks() } }
             "contacts" -> need(listOf(Manifest.permission.READ_CONTACTS)) { loadContacts() }
             "messages" -> {
                 curKey = ""
@@ -959,6 +1013,8 @@ fun Phone() {
             }
         }
     }
+    /** Phím mũi tên ở màn hình chờ: mở thẳng app; bấm Về thì quay lại màn hình chờ (không qua Menu). */
+    fun shortcut(s: String) { open(s); fromHome = true }
     fun back() {
         when (screen) {
             "home" -> {}
@@ -975,7 +1031,7 @@ fun Phone() {
                 else if (cFrom == "thread") screen = "thread" else open("messages")
             "recording" -> stopRecording()
             "recConfirm" -> screen = "recorder"
-            else -> open("menu")
+            else -> if (fromHome) open("home") else open("menu")
         }
     }
 
@@ -999,9 +1055,12 @@ fun Phone() {
             "accounts" -> maxOf(Accts.google(ctx).size, 1); "power" -> 2
             "contacts" -> maxOf(contacts.size, 1); "messages" -> threads.size + 1
             "thread" -> threadMsgs.size + 1; "msgview" -> maxOf(threadMsgs.size, 1); "recorder" -> recs.size + 1
+            "calllog" -> maxOf(calls.size, 1); "music" -> maxOf(tracks.size, 1)
             else -> 1 }
         when (k) {
             "UP", "LEFT" -> when (screen) {
+                "home" -> shortcut(if (k == "UP") "clock" else "calllog")      // ▲ Đồng hồ, ◀ Nhật ký
+                "music" -> if (k == "LEFT") musicStep(-1) else sel = (sel - 1 + size) % size
                 "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
                 "apps" -> if (appsMode == 1) gridMove(if (k == "UP") -APP_COLS else -1) else sel = (sel - 1 + size) % size
                 "recording" -> togglePause()
@@ -1020,6 +1079,8 @@ fun Phone() {
                 else -> sel = (sel - 1 + size) % size
             }
             "DOWN", "RIGHT" -> when (screen) {
+                "home" -> shortcut(if (k == "DOWN") "calc" else "music")       // ▼ Máy tính, ▶ Nhạc
+                "music" -> if (k == "RIGHT") musicStep(1) else sel = (sel + 1) % size
                 "snake" -> snake.turn(if (k == "DOWN") 0 to 1 else 1 to 0)
                 "apps" -> if (appsMode == 1) gridMove(if (k == "DOWN") APP_COLS else 1) else sel = (sel + 1) % size
                 "calendar" -> if (k == "RIGHT") monthOffset++   // ▲▼ không phản hồi
@@ -1102,6 +1163,10 @@ fun Phone() {
                 "camera" -> if (camOk) { shutterTick++; takePhoto(ctx, cam) }
                 "recorder" -> if (sel == 0) startRecording() else togglePlay(sel)
                 "recording" -> stopRecording()
+                "calllog" -> if (!granted(Manifest.permission.READ_CALL_LOG)) need(listOf(Manifest.permission.READ_CALL_LOG)) { loadCalls() }
+                    else calls.getOrNull(sel)?.let { callNow(it.number) }
+                "music" -> if (!audioPerms.all { granted(it) }) need(audioPerms) { loadTracks() }
+                    else if (tracks.isNotEmpty()) { if (sel == mCur && Music.active) Music.toggle() else playTrack(sel) }
             }
             "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) }
                 else if (screen == "compose" && cStage == 0 && cTo.isNotEmpty()) { cTo = cTo.dropLast(1); cName = "" }
@@ -1112,6 +1177,7 @@ fun Phone() {
                 "home" -> if (dial.isNotEmpty()) callNow(dial)
                 "contacts" -> contacts.getOrNull(sel)?.let { callNow(it.number) }
                 "thread", "msgview" -> callNow(dialable(curAddr))
+                "calllog" -> calls.getOrNull(sel)?.let { callNow(it.number) }
             }
             else -> when (screen) {
                 "home" -> dial += k
@@ -1130,6 +1196,14 @@ fun Phone() {
                     if (k[0].isDigit()) { cTo += k; cName = "" } else if (k == "*" && cTo.isEmpty()) cTo = "+"
                 } else entry.key(k, SystemClock.uptimeMillis())
                 "recorder" -> if (k == "#" && sel > 0) screen = "recConfirm"
+                "music" -> when (k) {
+                    "4" -> Music.seek(-10_000L)                                  // tua lùi 10 giây
+                    "6" -> Music.seek(10_000L)                                   // tua tới 10 giây
+                    "5" -> if (Music.active) Music.toggle() else if (tracks.isNotEmpty()) playTrack(sel)
+                    "0" -> { Music.stop(); mCur = -1 }
+                    "2" -> adjustMusicVol(1)
+                    "8" -> adjustMusicVol(-1)
+                }
             }
         }
     }
@@ -1150,6 +1224,8 @@ fun Phone() {
         "calc" -> "Xóa"; "camera" -> "Chụp"; "recording" -> "Lưu"; "recConfirm" -> "Có"
         "recorder" -> if (sel == 0) "Ghi" else if (playing != null && playing == recs.getOrNull(sel - 1)?.file?.absolutePath) "Dừng" else "Nghe"
         "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) "Xóa" else "Lưu"
+        "calllog" -> "Gọi"
+        "music" -> if (Music.active && sel == mCur) (if (Music.paused) "Tiếp" else "Tạm dừng") else "Phát"
         else -> ""
     }
     val right = when (screen) {
@@ -1345,6 +1421,35 @@ fun Phone() {
                                     Spacer(Modifier.height(8.dp))
                                     Text(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(r.file.lastModified())) +
                                         "  " + mmss(r.dur), color = INK, fontFamily = MONO, fontSize = 14.sp)
+                                }
+                            }
+                            "calllog" -> Column(Modifier.fillMaxSize()) {
+                                val cOk = granted(Manifest.permission.READ_CALL_LOG)
+                                Head("NHẬT KÝ  (${calls.size})")
+                                if (!cOk) Box(Modifier.weight(1f)) { Msg("Cần quyền Nhật ký cuộc gọi\n(bấm OK để cấp)") }
+                                else if (calls.isEmpty()) Box(Modifier.weight(1f)) { Msg(if (clLoaded) "Chưa có cuộc gọi nào" else "Đang tải...") }
+                                else {
+                                    val e = calls.getOrNull(sel)
+                                    Hint(if (e != null) CallHistory.detail(e) else "")
+                                    Hint(if (e != null && e.name.isNotEmpty() && e.name != e.number) e.number else "OK: gọi lại")
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(Modifier.weight(1f)) { Lines(calls.map { CallHistory.line(it) }, sel, tapItem, scroll) }
+                                }
+                            }
+                            "music" -> Column(Modifier.fillMaxSize()) {
+                                val t = mTick
+                                val mAudioOk = audioPerms.all { granted(it) }
+                                Head("NHẠC  (${tracks.size})")
+                                if (!mAudioOk) Box(Modifier.weight(1f)) { Msg("Cần quyền truy cập nhạc\n(bấm OK để cấp)") }
+                                else if (tracks.isEmpty()) Box(Modifier.weight(1f)) {
+                                    Msg(if (mLoaded) "Không thấy bài nhạc nào\ntrong bộ nhớ / thẻ nhớ" else "Đang tải...")
+                                } else {
+                                    Hint(if (Music.active && mCur in tracks.indices) musicProgress() else "OK:phát ◀▶:bài 4/6:tua")
+                                    Hint(tracks.getOrNull(sel)?.let { trackInfo(it) } ?: "")
+                                    Spacer(Modifier.height(4.dp))
+                                    val isPaused = Music.paused
+                                    val mLines = remember(tracks, mCur, isPaused) { musicLines(tracks, mCur, isPaused) }
+                                    Box(Modifier.weight(1f)) { Lines(mLines, sel, tapItem, scroll) }
                                 }
                             }
                             "snake" -> Column(Modifier.fillMaxSize()) {

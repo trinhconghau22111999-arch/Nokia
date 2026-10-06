@@ -2,7 +2,8 @@
 Launcher thật mô phỏng điện thoại cục gạch Nokia: thân máy + bàn phím cố định, chỉ màn hình LCD phía trên thay đổi.
 
 - **Khóa màn hình:** mở app là thấy hình nền che khung hiển thị. Bấm **Menu** rồi bấm **\*** để mở khóa. Tắt màn hình máy sẽ khóa lại.
-- **Menu:** Ứng dụng, Danh bạ, Tin nhắn, Đồng hồ (báo thức), Lịch (có âm lịch), Rắn săn mồi, Zalo, YouTube, Cài đặt
+- **Menu:** Ứng dụng, Danh bạ, Nhật ký, Tin nhắn, Đồng hồ (báo thức), Lịch (có âm lịch), Ghi âm, Máy tính, Máy ảnh, Thư viện, Nhạc, Rắn săn mồi, Zalo, YouTube, Cài đặt
+- **Phím tắt ở màn hình chờ (4 phím mũi tên):** ▲ Đồng hồ · ▼ Máy tính · ◀ Nhật ký cuộc gọi · ▶ Trình phát nhạc. Bấm Về trong các app này sẽ quay lại màn hình chờ.
 - **Cài đặt:** Chọn launcher · Cài đặt âm thanh (nhạc chuông, âm lượng, nhạc báo thức) · Wifi · SIM · Chế độ máy bay · Chia sẻ dữ liệu · Độ sáng · Pin · Bộ nhớ · Tài khoản · Lịch bật tắt nguồn · Bluetooth bật/tắt · Ứng dụng gọi · Khôi phục cài đặt gốc (chỉ xóa dữ liệu của app này)
   - **Wifi:** quét và chọn mạng; mạng có khóa thì hiện hộp nhập mật khẩu với bàn phím ảo của máy. Android 10+ không cho app tự bật/tắt wifi nên bấm dòng "Wifi" sẽ mở bảng wifi của hệ thống; Android 11+ lưu mạng qua hộp thoại của hệ thống.
   - **SIM:** mỗi SIM hiện nhà mạng, loại mạng (2G/3G/4G/5G), số điện thoại (nếu nhà mạng có ghi trên SIM). "Gọi bằng" / "Nhắn tin bằng": chọn SIM mà app này dùng khi gọi từ Danh bạ/màn hình chờ và khi gửi tin. SIM dữ liệu và công tắc dữ liệu di động: Android không cho app đổi nên bấm sẽ mở màn hình của hệ thống.
@@ -13,6 +14,8 @@ Launcher thật mô phỏng điện thoại cục gạch Nokia: thân máy + bà
   - **Lịch bật tắt nguồn:** đặt giờ tắt / giờ bật lặp mỗi ngày. Android không cho app thường tắt/bật nguồn máy nên "tắt" = khóa và tắt màn hình (cần bật Trợ năng phonecuibap, Android 9+), "bật" = bật sáng màn hình.
 - **Danh bạ:** đọc danh bạ trong máy; chọn một người (OK / chạm) là **gọi ngay**, không xác nhận. Bấm số 2–9 để nhảy tới tên theo chữ cái
 - **Tin nhắn:** hộp thư theo hội thoại, đọc, trả lời, soạn mới (chọn người nhận bằng ▲▼ hoặc gõ số). Gõ chữ kiểu Nokia (bấm lặp phím số), `*` đổi dấu tiếng Việt (a → à á ả ã ạ ă…), `#` đổi kiểu abc/Abc/ABC/123
+- **Nhật ký:** lịch sử cuộc gọi dồn chung một danh sách, mới nhất ở trên: `←` gọi đến, `→` gọi đi, `×` nhỡ (gồm cả từ chối). Dòng trên cùng cho biết loại, ngày giờ, thời lượng và số. OK / Gọi = gọi lại ngay. Cần quyền Nhật ký cuộc gọi.
+- **Nhạc:** liệt kê nhạc trong bộ nhớ máy và thẻ nhớ (đọc qua thư viện đa phương tiện của Android, thẻ nhớ phải được hệ thống quét), mỗi bài ghi rõ "Máy" hay "Thẻ nhớ". ▲▼ chọn bài, OK phát / tạm dừng, ◀▶ bài trước / sau, `4` `6` tua lùi / tới 10 giây, `5` phát / tạm dừng, `0` dừng, `2` `8` tăng / giảm âm lượng. Hết bài tự sang bài kế; tự tạm dừng khi có cuộc gọi. Thoát khỏi màn hình Nhạc thì nhạc dừng. Cần quyền truy cập nhạc.
 - **Zalo, YouTube:** nằm ngay trên Cài đặt. Zalo mở thẳng app. YouTube: máy có app "Tube for me" thì mở app đó (dò thấy lần đầu là ghi nhớ luôn), không có mới mở YouTube; chưa cài thì mở CH Play
 - **Ghi âm:** nằm ngay dưới Lịch. OK để ghi/dừng và lưu, chọn bản ghi + OK để nghe lại, `#` để xóa
 - **Máy tính:** + − × ÷ = , và ô phép tính lớn ở trên. Phím cứng: số, ▲ cộng, ▼ trừ, ◀ nhân, ▶ chia, OK bằng, `*` dấu phẩy, `#` xóa hết
