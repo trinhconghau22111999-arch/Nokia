@@ -440,9 +440,12 @@ fun Phone() {
     var fromHome by remember { mutableStateOf(false) }                  // app mở bằng phím mũi tên từ màn hình chờ -> Về = màn hình chờ
     var permThen by remember { mutableStateOf<(() -> Unit)?>(null) }
     var permMust by remember { mutableStateOf(listOf<String>()) }
-    val cLines = remember(contacts) {
+    // Ô tìm kiếm của Danh bạ (dùng chung bộ gõ multi-tap với soạn tin; chỉ tính khi đang ở màn hình Danh bạ)
+    val cQuery = if (screen == "contacts") entry.text else ""
+    val cShown = remember(contacts, cQuery) { filterContacts(contacts, cQuery) }
+    val cLines = remember(contacts, cShown) {
         val cnt = contacts.groupingBy { it.name }.eachCount()
-        contacts.map { if ((cnt[it.name] ?: 0) > 1) it.name + "  " + it.number else it.name }
+        cShown.map { if ((cnt[it.name] ?: 0) > 1) it.name + "  " + it.number else it.name }
     }
     val snake = remember { Snake() }
     val focus = remember { FocusRequester() }
@@ -464,7 +467,7 @@ fun Phone() {
         if (grp(p) == grp(screen)) return@LaunchedEffect
         when (grp(p)) {
             "apps" -> { apps = emptyList(); AppIcons.clear() }
-            "contacts" -> { contacts = emptyList(); cPick = -1; ctLoaded = false }
+            "contacts" -> { contacts = emptyList(); cPick = -1; ctLoaded = false; entry.reset() }
             "sms" -> {
                 smsAll = emptyList(); threads = emptyList(); threadMsgs = emptyList()
                 contacts = emptyList(); cPick = -1
@@ -900,11 +903,6 @@ fun Phone() {
         cPick = if (cPick < 0) (if (d > 0) 0 else contacts.size - 1) else (cPick + d + contacts.size) % contacts.size
         cTo = contacts[cPick].number; cName = contacts[cPick].name
     }
-    fun jumpTo(k: String) {
-        val g = LETTERS[k]?.lowercase() ?: return
-        val idx = contacts.indices.filter { i -> contacts[i].key.firstOrNull()?.let { ch -> ch in g } == true }
-        if (idx.isNotEmpty()) sel = idx.firstOrNull { it > sel } ?: idx.first()
-    }
 
     fun startRecording() {
         need(listOf(Manifest.permission.RECORD_AUDIO)) {
@@ -998,7 +996,7 @@ fun Phone() {
             "recorder" -> loadRecs()
             "calllog" -> { clLoaded = false; need(listOf(Manifest.permission.READ_CALL_LOG)) { loadCalls() } }
             "music" -> { mLoaded = false; mCur = -1; need(audioPerms) { loadTracks() } }
-            "contacts" -> need(listOf(Manifest.permission.READ_CONTACTS)) { loadContacts() }
+            "contacts" -> { entry.reset(); entry.mode = 0; need(listOf(Manifest.permission.READ_CONTACTS)) { loadContacts() } }
             "messages" -> {
                 curKey = ""
                 need(listOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS),
@@ -1020,6 +1018,8 @@ fun Phone() {
         when (screen) {
             "home" -> {}
             "menu" -> open("home")
+            "contacts" -> if (entry.text.isNotEmpty()) { entry.reset(); entry.mode = 0; sel = 0 }   // đang tìm: Về = xóa ô tìm
+                else if (fromHome) open("home") else open("menu")
             "alarmEdit" -> screen = "clock"
             "powerEdit" -> { screen = "power"; sel = pEdit }
             "sound", "reset", "wifi", "sim", "brightness", "battery", "storage", "accounts", "power" -> {
@@ -1054,7 +1054,7 @@ fun Phone() {
         val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> SETTINGS.size; "sound", "volume" -> 3; "clock" -> alarms.size + 1
             "wifi" -> wifiNets.size + 1; "sim" -> simRows(ctx).size; "brightness" -> 1; "battery" -> 3; "storage" -> 3
             "accounts" -> maxOf(Accts.google(ctx).size, 1); "power" -> 2
-            "contacts" -> maxOf(contacts.size, 1); "messages" -> threads.size + 1
+            "contacts" -> maxOf(cShown.size, 1); "messages" -> threads.size + 1
             "thread" -> threadMsgs.size + 1; "msgview" -> maxOf(threadMsgs.size, 1); "recorder" -> recs.size + 1
             "calllog" -> maxOf(calls.size, 1); "music" -> maxOf(tracks.size, 1)
             else -> 1 }
@@ -1152,7 +1152,7 @@ fun Phone() {
                 "clock" -> startEdit(sel)
                 "calendar" -> monthOffset = 0
                 "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) deleteAlarm() else saveAlarm()
-                "contacts" -> contacts.getOrNull(sel)?.let { callNow(it.number) }
+                "contacts" -> cShown.getOrNull(sel)?.let { callNow(it.number) }
                 "messages" -> if (sel == 0) startCompose("", "", "new") else threads.getOrNull(sel - 1)?.let { openThread(it.key) }
                 "thread" -> if (sel == 0) startCompose(curAddr, curName, "thread") else { mv = sel - 1; screen = "msgview" }
                 "msgview" -> startCompose(curAddr, curName, "thread")
@@ -1170,11 +1170,12 @@ fun Phone() {
             "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) }
                 else if (screen == "compose" && cStage == 0 && cTo.isNotEmpty()) { cTo = cTo.dropLast(1); cName = "" }
                 else if (screen == "compose" && cStage == 1 && entry.text.isNotEmpty()) entry.backspace()
+                else if (screen == "contacts" && entry.text.isNotEmpty()) { entry.backspace(); sel = 0 }
                 else back()
             "END" -> if (screen == "home") dial = "" else open("home")
             "CALL" -> when (screen) {
                 "home" -> if (dial.isNotEmpty()) callNow(dial)
-                "contacts" -> contacts.getOrNull(sel)?.let { callNow(it.number) }
+                "contacts" -> cShown.getOrNull(sel)?.let { callNow(it.number) }
                 "thread", "msgview" -> callNow(dialable(curAddr))
                 "calllog" -> calls.getOrNull(sel)?.let { callNow(it.number) }
             }
@@ -1190,7 +1191,8 @@ fun Phone() {
                     "#" -> calc.clear()
                     else -> if (k.length == 1 && k[0].isDigit()) calc.digit(k)
                 }
-                "contacts" -> jumpTo(k)
+                "contacts" -> if (k == "#") { entry.mode = if (entry.mode == 3) 0 else 3 }     // # đổi chữ <-> số
+                    else if (k != "*") { entry.key(k, SystemClock.uptimeMillis()); sel = 0 }
                 "compose" -> if (cStage == 0) {
                     if (k[0].isDigit()) { cTo += k; cName = "" } else if (k == "*" && cTo.isEmpty()) cTo = "+"
                 } else entry.key(k, SystemClock.uptimeMillis())
@@ -1231,6 +1233,7 @@ fun Phone() {
         "home" -> if (dial.isEmpty()) "" else "Xóa"
         "reset", "recConfirm" -> "Không"
         "compose" -> if ((cStage == 0 && cTo.isNotEmpty()) || (cStage == 1 && entry.text.isNotEmpty())) "Xóa" else "Về"
+        "contacts" -> if (entry.text.isNotEmpty()) "Xóa" else "Về"
         else -> "Về"
     }
 
@@ -1355,9 +1358,27 @@ fun Phone() {
                                 Text("Xóa toàn bộ dữ liệu của riêng app phonecuibap (báo thức, nhạc báo thức, quyền đã cấp). Máy của bạn không bị ảnh hưởng.",
                                     color = INK, fontSize = 14.sp, fontFamily = MONO, textAlign = TextAlign.Center)
                             }
-                            "contacts" -> if (contacts.isEmpty())
-                                Msg(if (!granted(Manifest.permission.READ_CONTACTS)) "Cần quyền Danh bạ" else if (!ctLoaded) "Đang truy xuất danh bạ..." else "Danh bạ trống")
-                                else Lines(cLines, sel, tapItem, scroll)
+                            "contacts" -> Column(Modifier.fillMaxSize()) {
+                                val q = entry.text
+                                Head("DANH BẠ  (" + (if (q.isEmpty()) contacts.size else cShown.size) + ")")
+                                if (contacts.isEmpty()) Box(Modifier.weight(1f)) {
+                                    Msg(if (!granted(Manifest.permission.READ_CONTACTS)) "Cần quyền Danh bạ" else if (!ctLoaded) "Đang truy xuất danh bạ..." else "Danh bạ trống")
+                                } else {
+                                    // Một ô tìm duy nhất: gõ chữ cái đầu hoặc tên / số bất kỳ (bấm lặp phím số như soạn tin, # đổi chữ <-> số)
+                                    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .border(2.dp, INK).padding(horizontal = 6.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        Text(if (q.isEmpty()) "Gõ tên hoặc số để tìm" else q.takeLast(18) + "_", Modifier.weight(1f),
+                                            color = if (q.isEmpty()) INK.copy(alpha = 0.55f) else INK, fontFamily = MONO,
+                                            fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Clip)
+                                        Text(if (entry.mode == 3) "123" else "abc", color = INK, fontFamily = MONO, fontSize = 12.sp)
+                                    }
+                                    Spacer(Modifier.height(2.dp))
+                                    Box(Modifier.weight(1f)) {
+                                        if (cShown.isEmpty()) Msg("Không tìm thấy") else Lines(cLines, sel, tapItem, scroll)
+                                    }
+                                }
+                            }
                             "messages" -> Lines(listOf("+ Soạn tin mới") + threads.map {
                                 (if (it.last.sent) "→ " else "") + it.name + ": " + it.last.body.replace('\n', ' ')
                             }, sel, tapItem, scroll)

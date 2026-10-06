@@ -20,6 +20,38 @@ fun plain(s: String): String =
         .replace('đ', 'd').replace('Đ', 'D')
         .lowercase()
 
+/**
+ * Tìm trong danh bạ bằng MỘT ô duy nhất: gõ vài chữ cái đầu hoặc gõ tên / số bất kỳ.
+ * Không phân biệt hoa thường và dấu. Thứ tự kết quả:
+ * tên bắt đầu bằng chuỗi gõ > có từ bắt đầu bằng chuỗi gõ > tên chứa chuỗi gõ > số điện thoại chứa chuỗi gõ.
+ */
+fun filterContacts(all: List<Contact>, query: String): List<Contact> {
+    val q = plain(query).trim()
+    if (q.isEmpty()) return all
+    val numeric = q.all { it.isDigit() || it == '+' }
+    val groups = Array(4) { ArrayList<Contact>() }
+    for (c in all) {
+        val k = c.key
+        val r = when {
+            k.startsWith(q) -> 0
+            k.split(' ', '-', '.', '_', ',').any { it.startsWith(q) } -> 1
+            k.contains(q) -> 2
+            numeric && numberHas(c.number, q) -> 3
+            else -> -1
+        }
+        if (r >= 0) groups[r].add(c)
+    }
+    return groups.flatMap { it }
+}
+
+/** Số có chứa chuỗi tìm không (0908... khớp cả +84908...). */
+private fun numberHas(number: String, q: String): Boolean {
+    val n = number.filter { it.isDigit() }
+    val d = q.filter { it.isDigit() }
+    if (d.isEmpty()) return false
+    return n.contains(d) || (d.startsWith("0") && d.length > 1 && n.contains(d.drop(1)))
+}
+
 /** Chỉ giữ ký tự quay số được. */
 fun dialable(n: String): String = n.filter { it.isDigit() || it == '+' || it == '*' || it == '#' }
 
