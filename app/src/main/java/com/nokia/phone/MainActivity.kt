@@ -31,6 +31,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -461,6 +462,7 @@ fun Phone() {
     LaunchedEffect(screen) {
         fun grp(x: String) = when (x) {
             "messages", "thread", "msgview", "compose", "smsConfirm" -> "sms"
+            "gallery", "galConfirm" -> "gallery"
             "recorder", "recConfirm", "recording" -> "rec"
             "power", "powerEdit" -> "power"
             else -> x
@@ -828,6 +830,41 @@ fun Phone() {
         val miss = perms.filter { !granted(it) }
         if (miss.isEmpty()) then() else { permThen = then; permMust = must; multiPerm.launch(miss.toTypedArray()) }
     }
+    // ---- Xóa ảnh trong Thư viện ----
+    var delPhotoId by remember { mutableLongStateOf(-1L) }
+    fun afterPhotoDeleted(id: Long) {
+        gIds = gIds.filterNot { it == id }
+        gIdx = gIdx.coerceIn(0, maxOf(0, gIds.size - 1))
+        gBmp = null
+        Toast.makeText(ctx, "Đã xóa ảnh", Toast.LENGTH_SHORT).show()
+    }
+    val photoDelReq = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) {
+            val id = delPhotoId
+            if (Build.VERSION.SDK_INT == 29) {   // Android 10: được phép rồi thì phải xóa lại
+                scope.launch {
+                    if (withContext(Dispatchers.IO) { Gallery.delete(ctx, id) } is DelResult.Done) afterPhotoDeleted(id)
+                    else Toast.makeText(ctx, "Không xóa được ảnh", Toast.LENGTH_SHORT).show()
+                }
+            } else afterPhotoDeleted(id)
+        }
+    }
+    fun runDeletePhoto() {
+        val id = gIds.getOrNull(gIdx) ?: return
+        delPhotoId = id
+        scope.launch {
+            when (val res = withContext(Dispatchers.IO) { Gallery.delete(ctx, id) }) {
+                is DelResult.Done -> afterPhotoDeleted(id)
+                is DelResult.NeedUser -> photoDelReq.launch(IntentSenderRequest.Builder(res.sender).build())
+                is DelResult.Failed -> Toast.makeText(ctx, "Không xóa được ảnh", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    /** Android 11+: hệ thống tự hỏi xác nhận nên xóa luôn; bản cũ hơn thì hỏi trước bằng màn hình của app. */
+    fun askDeletePhoto() {
+        if (gIds.isEmpty()) return
+        if (Build.VERSION.SDK_INT >= 30) runDeletePhoto() else screen = "galConfirm"
+    }
     val imgPerms = if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.READ_MEDIA_IMAGES)
         else listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     val camPerms = if (Build.VERSION.SDK_INT < 29) listOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -1057,6 +1094,7 @@ fun Phone() {
             "recording" -> stopRecording()
             "recConfirm" -> screen = "recorder"
             "smsConfirm" -> screen = delBack
+            "galConfirm" -> screen = "gallery"
             else -> if (fromHome) open("home") else open("menu")
         }
     }
@@ -1074,6 +1112,16 @@ fun Phone() {
             if (k == "OK" || k == "SOFTL") { deleteRec(sel); screen = "recorder" }
             else if (k == "END") open("home")
             else if (k == "SOFTR" || k == "UP" || k == "DOWN" || k == "LEFT" || k == "RIGHT") screen = "recorder"
+            return
+        }
+        if (screen == "galConfirm") {   // Xóa ảnh? (Android 10 trở xuống) OK/Có = xóa, phím khác = hủy
+            if (k == "OK" || k == "SOFTL") {
+                screen = "gallery"
+                if (Build.VERSION.SDK_INT < 29) need(listOf(Manifest.permission.WRITE_EXTERNAL_STORAGE)) { runDeletePhoto() }
+                else runDeletePhoto()
+            }
+            else if (k == "END") open("home")
+            else if (k == "SOFTR" || k == "UP" || k == "DOWN" || k == "LEFT" || k == "RIGHT") screen = "gallery"
             return
         }
         if (screen == "smsConfirm") {   // Xóa tin? OK/Có = xóa, phím khác = hủy
@@ -1193,6 +1241,7 @@ fun Phone() {
                 "camera" -> if (camOk) { shutterTick++; takePhoto(ctx, cam) }
                 "recorder" -> if (sel == 0) startRecording() else togglePlay(sel)
                 "recording" -> stopRecording()
+                "gallery" -> if (k == "SOFTL") askDeletePhoto()     // phím mềm trái = Xóa ảnh
                 "calllog" -> if (!granted(Manifest.permission.READ_CALL_LOG)) need(listOf(Manifest.permission.READ_CALL_LOG)) { loadCalls() }
                     else calls.getOrNull(sel)?.let { callNow(it.number) }
                 "music" -> if (!audioPerms.all { granted(it) }) need(audioPerms) { loadTracks() }
@@ -1257,7 +1306,8 @@ fun Phone() {
         "clock" -> "Sửa"; "calendar" -> "Hôm nay"
         "contacts" -> "Gọi"; "messages", "thread" -> "Chọn"; "msgview" -> "Trả lời"
         "compose" -> if (cStage == 1) "Gửi" else "Tiếp"
-        "calc" -> "Xóa"; "camera" -> "Chụp"; "recording" -> "Lưu"; "recConfirm", "smsConfirm" -> "Có"
+        "calc" -> "Xóa"; "camera" -> "Chụp"; "recording" -> "Lưu"; "recConfirm", "smsConfirm", "galConfirm" -> "Có"
+        "gallery" -> if (gIds.isNotEmpty()) "Xóa" else ""
         "recorder" -> if (sel == 0) "Ghi" else if (playing != null && playing == recs.getOrNull(sel - 1)?.file?.absolutePath) "Dừng" else "Nghe"
         "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) "Xóa" else "Lưu"
         "calllog" -> "Gọi"
@@ -1266,7 +1316,7 @@ fun Phone() {
     }
     val right = when (screen) {
         "home" -> if (dial.isEmpty()) "" else "Xóa"
-        "reset", "recConfirm", "smsConfirm" -> "Không"
+        "reset", "recConfirm", "smsConfirm", "galConfirm" -> "Không"
         "compose" -> if ((cStage == 0 && cTo.isNotEmpty()) || (cStage == 1 && entry.text.isNotEmpty())) "Xóa" else "Về"
         "contacts" -> if (entry.text.isNotEmpty()) "Xóa" else "Về"
         else -> "Về"
@@ -1474,6 +1524,12 @@ fun Phone() {
                                     Text("█".repeat(bars) + "░".repeat(16 - bars), color = INK, fontFamily = MONO, fontSize = 18.sp)
                                     Text((if (recPaused) "▲: tiếp tục" else "▲: tạm dừng") + "\nOK: lưu", color = INK, fontFamily = MONO, fontSize = 13.sp, textAlign = TextAlign.Center)
                                 }
+                            }
+                            "galConfirm" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+                                Text("Xóa ảnh này?", color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp, textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(8.dp))
+                                Text((gIdx + 1).toString() + "/" + gIds.size, color = INK, fontFamily = MONO, fontSize = 14.sp)
                             }
                             "smsConfirm" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {
                                 Text(if (delWhole) "Xóa cả hội thoại?" else "Xóa tin nhắn này?", color = INK, fontFamily = MONO,

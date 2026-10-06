@@ -122,7 +122,33 @@ fun takePhoto(ctx: Context, holder: CamHolder) {
 
 // ---------------------------------------------------------------- Thư viện ảnh
 
+/** Kết quả xóa ảnh: xong / thất bại / cần người dùng cho phép qua hộp thoại của hệ thống. */
+sealed class DelResult {
+    object Done : DelResult()
+    object Failed : DelResult()
+    class NeedUser(val sender: android.content.IntentSender) : DelResult()
+}
+
 object Gallery {
+    /**
+     * Xóa một ảnh. Android 11+: hệ thống tự hỏi xác nhận (createDeleteRequest) rồi tự xóa.
+     * Android 10: xóa thẳng, nếu ảnh của app khác thì hệ thống hỏi cho phép rồi phải gọi lại.
+     * Android 9 trở xuống: xóa thẳng (cần quyền ghi bộ nhớ).
+     */
+    fun delete(ctx: Context, id: Long): DelResult {
+        val u = uri(id)
+        if (Build.VERSION.SDK_INT >= 30)
+            return try { DelResult.NeedUser(MediaStore.createDeleteRequest(ctx.contentResolver, listOf(u)).intentSender) }
+            catch (_: Exception) { DelResult.Failed }
+        return try {
+            if (ctx.contentResolver.delete(u, null, null) > 0) DelResult.Done else DelResult.Failed
+        } catch (e: SecurityException) {
+            if (Build.VERSION.SDK_INT >= 29 && e is android.app.RecoverableSecurityException)
+                DelResult.NeedUser(e.userAction.actionIntent.intentSender)
+            else DelResult.Failed
+        } catch (_: Exception) { DelResult.Failed }
+    }
+
     fun ids(ctx: Context): List<Long> {
         val out = ArrayList<Long>()
         try {
