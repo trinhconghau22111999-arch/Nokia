@@ -65,6 +65,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
@@ -341,9 +345,12 @@ fun isBtOn(ctx: Context): Boolean = try {
 
 /** Màn hình khóa mặc định: hình nền che toàn bộ khung hiển thị, bấm Menu rồi * để mở khóa. */
 @Composable
-fun LockScreen(time: String, date: String, armed: Boolean) {
+fun LockScreen(time: String, date: String, armed: Boolean, wall: ImageBitmap? = null) {
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
-        Canvas(Modifier.fillMaxSize()) {
+        if (wall != null) {
+            Image(wall, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.3f)))   // làm sáng nhẹ để chữ đen dễ đọc
+        } else Canvas(Modifier.fillMaxSize()) {
             val w = size.width; val h = size.height
             drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF8FD3F4), Color(0xFFDDF4E4))))
             drawCircle(Color(0xFFFFE9A8), radius = w * 0.13f, center = Offset(w * 0.8f, h * 0.30f))
@@ -389,6 +396,7 @@ fun Phone() {
     var btOn by remember { mutableStateOf(false) }
     var dialerOn by remember { mutableStateOf(false) }
     var smsOn by remember { mutableStateOf(isDefaultSms(ctx)) }
+    var wallBmp by remember { mutableStateOf<ImageBitmap?>(null) }       // hình nền màn hình khóa do người dùng chọn
     var infoTick by remember { mutableIntStateOf(0) }      // làm tươi số liệu (wifi, pin, SIM...) mỗi giây
     var wifiNets by remember { mutableStateOf(listOf<WifiNet>()) }
     var power by remember { mutableStateOf(PowerStore.load(ctx)) }
@@ -404,6 +412,14 @@ fun Phone() {
     var eon by remember { mutableStateOf(true) }
     var lcdRect by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { wallBmp = withContext(Dispatchers.IO) { Wallpaper.load(ctx) }?.asImageBitmap() }
+    val wallReq = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u ->
+        if (u != null) scope.launch {
+            val b = withContext(Dispatchers.IO) { Wallpaper.save(ctx, u) }
+            if (b != null) { wallBmp = b.asImageBitmap(); Toast.makeText(ctx, "Đã đặt hình nền màn hình khóa", Toast.LENGTH_SHORT).show() }
+            else Toast.makeText(ctx, "Không đọc được ảnh này", Toast.LENGTH_SHORT).show()
+        }
+    }
     var contacts by remember { mutableStateOf(listOf<Contact>()) }
     var smsAll by remember { mutableStateOf(listOf<Sms>()) }
     var threads by remember { mutableStateOf(listOf<SmsThread>()) }
@@ -1211,6 +1227,7 @@ fun Phone() {
                 "settings" -> {
                     settingsSel = sel
                     when (SETTINGS.getOrElse(sel) { "reset" }) {
+                        "wallpaper" -> try { wallReq.launch("image/*") } catch (_: Exception) { Toast.makeText(ctx, "Máy không có app chọn ảnh", Toast.LENGTH_SHORT).show() }
                         "launcher" -> launch(Intent(Settings.ACTION_HOME_SETTINGS))
                         "sound" -> open("sound")
                         "wifi" -> open("wifi")
@@ -1416,7 +1433,7 @@ fun Phone() {
                             }
                             "calendar" -> MonthCalendar(monthOffset) { d -> monthOffset += d }
                             "settings" -> { val t = infoTick
-                                Lines(SETTINGS.map { settingLabel(ctx, it, btOn, dialerOn, smsOn) }, sel, tapItem, scroll) }
+                                Lines(SETTINGS.map { settingLabel(ctx, it, btOn, dialerOn, smsOn, wallBmp != null) }, sel, tapItem, scroll) }
                             "wifi" -> { val t = infoTick
                                 if (!granted(Manifest.permission.ACCESS_FINE_LOCATION)) Msg("Cần quyền Vị trí để quét wifi\n(bấm OK để cấp)")
                                 else Lines(wifiLines(ctx, wifiNets), sel, tapItem, scroll) }
@@ -1638,7 +1655,7 @@ fun Phone() {
                         }
                     }
                 }
-                if (locked) LockScreen(now.take(5), dateNow(), lockAt != 0L)
+                if (locked) LockScreen(now.take(5), dateNow(), lockAt != 0L, wallBmp)
             }
             }
             }
