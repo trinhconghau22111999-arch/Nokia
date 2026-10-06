@@ -397,6 +397,18 @@ fun PhoneIcon(color: Color, hangUp: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
+/** Mũi tên hướng về bên trái (phím Quay lại). */
+@Composable
+fun BackArrow(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val w = size.width; val h = size.height; val sw = w * 0.14f
+        val l = Offset(w * 0.10f, h * 0.5f); val r = Offset(w * 0.90f, h * 0.5f)
+        drawLine(color, l, r, sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(color, l, Offset(w * 0.40f, h * 0.18f), sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(color, l, Offset(w * 0.40f, h * 0.82f), sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    }
+}
+
 @Composable
 fun K(mod: Modifier, shape: Shape = RoundedCornerShape(16.dp), bg: Color = KEY,
       onClick: () -> Unit, content: @Composable () -> Unit) {
@@ -430,7 +442,7 @@ fun ColumnScope.Keys(p: (String) -> Unit) {
         val c = s / 3
         Row(Modifier.fillMaxWidth().height(s)) {
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
-                K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTL") }) { Glyph("●", 14) }
+                K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTL") }) { Glyph("Menu", 20) }
                 K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(14.dp), onClick = { p("CALL") }) {
                     PhoneIcon(GREEN, false, Modifier.size(31.dp))
                 }
@@ -453,7 +465,7 @@ fun ColumnScope.Keys(p: (String) -> Unit) {
                 }
             }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
-                K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTR") }) { Glyph("●", 14) }
+                K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTR") }) { BackArrow(KEYTXT, Modifier.size(34.dp)) }
                 K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(14.dp), onClick = { p("END") }) {
                     PhoneIcon(RED, true, Modifier.size(31.dp))
                 }
