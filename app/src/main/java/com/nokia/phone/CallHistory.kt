@@ -48,9 +48,9 @@ object CallHistory {
         return out
     }
 
-    /** Dòng trong danh sách: ← đến, → đi, × nhỡ. */
+    /** Dòng trong danh sách: "Gọi đến:", "Gọi đi:", "Gọi nhỡ:" (dùng chữ vì phông máy không vẽ được mũi tên). */
     fun line(e: CallEntry): String =
-        (when (e.kind) { OUT -> "→ "; MISSED -> "× "; else -> "← " }) + e.label
+        (when (e.kind) { OUT -> "Gọi đi: "; MISSED -> "Gọi nhỡ: "; else -> "Gọi đến: " }) + e.label
 
     /** Dòng chi tiết của mục đang chọn: loại, ngày giờ, thời lượng. */
     fun detail(e: CallEntry): String {
