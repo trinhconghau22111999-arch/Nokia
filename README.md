@@ -16,3 +16,19 @@ Launcher thật mô phỏng điện thoại cục gạch Nokia: thân máy + bà
 
 Build APK: push lên GitHub -> Actions -> "Build APK" -> tải artifact `nokia-phone-apk`.
 Đặt làm launcher: Cài đặt máy -> Ứng dụng mặc định -> Ứng dụng màn hình chính -> Nokia Phone.
+
+## Gọi / nhận cuộc gọi kiểu Nokia
+
+Cuộc gọi đi và đến hiển thị ngay trên màn hình LCD (tên + số, đồng hồ đếm giờ, phím mềm), điều khiển bằng phím Gọi (nghe), phím Tắt (từ chối / cúp), phím mềm, D-pad và phím số (gửi DTMF).
+
+- Bật: Menu -> Cài đặt -> **Ứng dụng gọi** -> chọn Nokia Phone làm ứng dụng gọi điện mặc định (bắt buộc để nhận cuộc gọi đến, Android không cho app thường tự vẽ giao diện cuộc gọi).
+- Cuộc gọi đến: Gọi/Nghe = trả lời, Tắt/Từ chối = từ chối, OK = tắt chuông. Hiện cả trên màn hình khóa.
+- Đang gọi: Menu = Loa ngoài, Micro, Giữ cuộc gọi, Ghi âm cuộc gọi, Kết thúc. Máy 2 SIM sẽ hỏi chọn SIM.
+- Nếu chưa đặt làm mặc định, cuộc gọi vẫn dùng giao diện của hệ thống như cũ.
+
+## App con Ghi âm
+
+Menu -> Ghi âm (hoặc biểu tượng "Ghi âm Nokia" riêng): ghi, tạm dừng/tiếp tục, thanh mức âm, nghe lại có thanh tiến trình, xóa có xác nhận (#).
+Bản ghi lưu trong bộ nhớ riêng của app (`files/recordings`), dùng chung với tính năng ghi âm cuộc gọi.
+Ghi âm cuộc gọi thu bằng micro nên cần bật loa ngoài mới có tiếng bên kia; hãy báo cho người đối diện khi ghi âm.
+

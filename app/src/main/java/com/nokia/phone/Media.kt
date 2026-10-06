@@ -148,7 +148,32 @@ object Rec {
     private var cur: File? = null
     var startedAt = 0L
         private set
+    var paused = false
+        private set
+    private var pausedAt = 0L
+    private var pausedTotal = 0L
     val active: Boolean get() = mr != null
+
+    /** Thời gian đã ghi (không tính lúc tạm dừng). */
+    fun elapsed(): Long =
+        if (mr == null) 0L else (if (paused) pausedAt else SystemClock.elapsedRealtime()) - startedAt - pausedTotal
+
+    fun pause(): Boolean {
+        val r = mr ?: return false
+        if (paused) return true
+        return try { r.pause(); paused = true; pausedAt = SystemClock.elapsedRealtime(); true } catch (_: Exception) { false }
+    }
+
+    fun resume(): Boolean {
+        val r = mr ?: return false
+        if (!paused) return true
+        return try {
+            r.resume(); pausedTotal += SystemClock.elapsedRealtime() - pausedAt; paused = false; true
+        } catch (_: Exception) { false }
+    }
+
+    /** Biên độ hiện tại 0..32767 để vẽ thanh mức âm. */
+    fun level(): Int = try { mr?.maxAmplitude ?: 0 } catch (_: Exception) { 0 }
 
     private fun dir(ctx: Context): File = File(ctx.filesDir, "recordings").apply { mkdirs() }
 
@@ -166,6 +191,7 @@ object Rec {
             r.prepare()
             r.start()
             mr = r; cur = f; startedAt = SystemClock.elapsedRealtime()
+            paused = false; pausedTotal = 0L
             true
         } catch (_: Exception) {
             try { r.release() } catch (_: Exception) {}
@@ -178,7 +204,7 @@ object Rec {
     fun stop(): File? {
         val r = mr ?: return null
         val f = cur
-        mr = null; cur = null
+        mr = null; cur = null; paused = false
         var ok = true
         try { r.stop() } catch (_: RuntimeException) { ok = false }
         try { r.release() } catch (_: Exception) {}

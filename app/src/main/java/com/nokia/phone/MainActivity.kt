@@ -3,6 +3,8 @@ package com.nokia.phone
 import android.Manifest
 import android.app.Activity
 import android.app.ActivityManager
+import android.app.role.RoleManager
+import android.telecom.TelecomManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
@@ -144,7 +146,15 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         hideBars()
         inSplit.value = isInMultiWindowMode
+        takeDial(intent)
         setContent { Phone() }
+    }
+
+    /** ACTION_DIAL / tel:... từ app khác -> điền số vào màn hình chờ. */
+    private fun takeDial(i: Intent?) {
+        val u = i?.data ?: return
+        if (u.scheme == "tel" && (i.action == Intent.ACTION_DIAL || i.action == Intent.ACTION_VIEW))
+            NokiaState.pendingDial = dialable(Uri.decode(u.schemeSpecificPart))
     }
 
     private fun hideBars() {
@@ -163,6 +173,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra("menu", false)) NokiaState.openMenu = true
+        takeDial(intent)
         homeTick.intValue++
     }
 
@@ -289,6 +300,10 @@ fun volLine(ctx: Context, name: String, stream: Int): String {
     return name.padEnd(12) + "█".repeat(f) + "░".repeat(10 - f)
 }
 
+fun isDefaultDialer(ctx: Context): Boolean = try {
+    (ctx.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage == ctx.packageName
+} catch (_: Exception) { false }
+
 fun isBtOn(ctx: Context): Boolean = try {
     ((ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter)?.isEnabled == true
 } catch (_: Exception) { false }
@@ -340,6 +355,7 @@ fun Phone() {
     var locked by remember { mutableStateOf(true) }
     var lockAt by remember { mutableLongStateOf(0L) }
     var btOn by remember { mutableStateOf(false) }
+    var dialerOn by remember { mutableStateOf(false) }
     var volTick by remember { mutableIntStateOf(0) }
     var ringName by remember { mutableStateOf("") }
     var alarmName by remember { mutableStateOf("") }
@@ -390,7 +406,7 @@ fun Phone() {
     LaunchedEffect(Unit) { focus.requestFocus(); while (true) { now = timeNow(); delay(1000) } }
     LaunchedEffect(screen) { if (screen == "snake") while (true) { delay(170); snake.step() } }
     LaunchedEffect(lockAt) { if (lockAt != 0L) { delay(4000); lockAt = 0L } }
-    LaunchedEffect(screen) { if (screen == "settings") while (true) { btOn = isBtOn(ctx); delay(600) } }
+    LaunchedEffect(screen) { if (screen == "settings") while (true) { btOn = isBtOn(ctx); dialerOn = isDefaultDialer(ctx); delay(600) } }
     LaunchedEffect(gIdx, gIds, screen) {
         if (screen == "gallery" && gIds.isNotEmpty()) {
             gBmp = null
@@ -416,6 +432,7 @@ fun Phone() {
     }
     val tick = homeTick.intValue
     LaunchedEffect(tick) { if (tick > 0) { screen = if (NokiaState.openMenu) "menu" else "home"; NokiaState.openMenu = false; sel = 0 } }
+    LaunchedEffect(tick) { NokiaState.pendingDial?.let { dial = it; NokiaState.pendingDial = null; screen = "home"; sel = 0 } }
 
     fun freeformOn(): Boolean =
         ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_FREEFORM_WINDOW_MANAGEMENT) ||
@@ -553,6 +570,21 @@ fun Phone() {
     }
 
     val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val dialerReq = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        dialerOn = isDefaultDialer(ctx)
+        Toast.makeText(ctx, if (dialerOn) "Đã đặt Nokia Phone làm ứng dụng gọi điện" else "Chưa đặt làm ứng dụng gọi điện", Toast.LENGTH_SHORT).show()
+        if (dialerOn && Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    fun requestDialer() {
+        if (isDefaultDialer(ctx)) { Toast.makeText(ctx, "Đã là ứng dụng gọi điện mặc định", Toast.LENGTH_SHORT).show(); return }
+        val i = if (Build.VERSION.SDK_INT >= 29)
+            (ctx.getSystemService(Context.ROLE_SERVICE) as RoleManager).createRequestRoleIntent(RoleManager.ROLE_DIALER)
+        else Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
+            .putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, ctx.packageName)
+        try { dialerReq.launch(i) } catch (_: Exception) { Toast.makeText(ctx, "Máy không hỗ trợ đổi ứng dụng gọi điện", Toast.LENGTH_SHORT).show() }
+    }
     fun startEdit(i: Int) {
         editIdx = i
         val a = alarms.getOrNull(i) ?: Alarm(7, 0, true)
@@ -769,7 +801,7 @@ fun Phone() {
             else lockAt = 0L
             return
         }
-        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 4; "sound", "volume" -> 3; "clock" -> alarms.size + 1
+        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 5; "sound", "volume" -> 3; "clock" -> alarms.size + 1
             "contacts" -> maxOf(contacts.size, 1); "messages" -> threads.size + 1
             "thread" -> threadMsgs.size + 1; "msgview" -> maxOf(threadMsgs.size, 1); "recorder" -> recs.size + 1
             else -> 1 }
@@ -803,6 +835,7 @@ fun Phone() {
                 "menu" -> when (val id = MENU[sel].second) {
                     "zalo" -> launchPkg("com.zing.zalo", "Zalo")
                     "youtube" -> launchPkg("com.google.android.youtube", "YouTube")
+                    "recorder" -> launch(Intent(ctx, RecorderActivity::class.java), inLcd = false)
                     else -> open(id)
                 }
                 "apps" -> apps.getOrNull(sel)?.let { a ->
@@ -812,6 +845,7 @@ fun Phone() {
                     0 -> launch(Intent(Settings.ACTION_HOME_SETTINGS))
                     1 -> open("sound")
                     2 -> toggleBt()
+                    3 -> requestDialer()
                     else -> open("reset")
                 }
                 "sound" -> when (sel) {
@@ -956,7 +990,9 @@ fun Phone() {
                             }
                             "calendar" -> MonthCalendar(monthOffset)
                             "settings" -> Lines(listOf("Chọn launcher", "Cài đặt âm thanh",
-                                "Bluetooth: " + if (btOn) "BẬT" else "TẮT", "Khôi phục cài đặt gốc"), sel, tapItem, scroll)
+                                "Bluetooth: " + if (btOn) "BẬT" else "TẮT",
+                                "Ứng dụng gọi: " + if (dialerOn) "Nokia" else "khác (chọn)",
+                                "Khôi phục cài đặt gốc"), sel, tapItem, scroll)
                             "sound" -> Lines(listOf("Nhạc chuông: $ringName", "Âm lượng", "Nhạc báo thức: $alarmName"), sel, tapItem, scroll)
                             "volume" -> Lines(VOL.map { (n, st) -> volTick.let { volLine(ctx, n, st) } }, sel, tapItem, scroll)
                             "reset" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {

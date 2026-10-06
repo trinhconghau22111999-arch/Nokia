@@ -28,6 +28,7 @@ object NokiaState {
     @Volatile var keypadTop = 0          // toạ độ y (px) của mép trên cửa sổ bàn phím
     var splitTried = false
     var openMenu = false
+    @Volatile var pendingDial: String? = null   // số từ app khác (ACTION_DIAL tel:...) chờ điền vào màn hình chờ
     var listener: ((String) -> Unit)? = null
 }
 
