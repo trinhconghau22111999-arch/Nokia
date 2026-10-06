@@ -2,7 +2,7 @@
 Launcher thật mô phỏng điện thoại cục gạch Nokia: thân máy + bàn phím cố định, chỉ màn hình LCD phía trên thay đổi.
 
 - **Khóa màn hình:** mở app là thấy hình nền che khung hiển thị. Bấm **Menu** rồi bấm **\*** để mở khóa. Tắt màn hình máy sẽ khóa lại.
-- **Menu:** Ứng dụng, Danh bạ, Nhật ký, Tin nhắn, Đồng hồ (báo thức), Lịch (có âm lịch), Ghi âm, Máy tính, Máy ảnh, Thư viện, Nhạc, Rắn săn mồi, Zalo, YouTube, Cài đặt
+- **Menu:** Nhật ký (trên cùng), Ứng dụng, Danh bạ, Tin nhắn, Nhạc, Đồng hồ (báo thức), Lịch (có âm lịch), Ghi âm, Máy tính, Máy ảnh, Thư viện, Rắn săn mồi, Zalo, YouTube, Cài đặt
 - **Phím tắt ở màn hình chờ (4 phím mũi tên):** ▲ Đồng hồ · ▼ Máy tính · ◀ Nhật ký cuộc gọi · ▶ Trình phát nhạc. Bấm Về trong các app này sẽ quay lại màn hình chờ.
 - **Cài đặt:** Chọn launcher · Cài đặt âm thanh (nhạc chuông, âm lượng, nhạc báo thức) · Wifi · SIM · Chế độ máy bay · Chia sẻ dữ liệu · Độ sáng · Pin · Bộ nhớ · Tài khoản · Lịch bật tắt nguồn · Bluetooth bật/tắt · Ứng dụng gọi · Khôi phục cài đặt gốc (chỉ xóa dữ liệu của app này)
   - **Wifi:** quét và chọn mạng; mạng có khóa thì hiện hộp nhập mật khẩu với bàn phím ảo của máy. Android 10+ không cho app tự bật/tắt wifi nên bấm dòng "Wifi" sẽ mở bảng wifi của hệ thống; Android 11+ lưu mạng qua hộp thoại của hệ thống.
