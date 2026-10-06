@@ -1064,7 +1064,7 @@ fun Phone() {
                 "brightness" -> if (k == "LEFT" && sel == 0) adjustBright(-1) else sel = (sel - 1 + size) % size
                 "alarmEdit", "powerEdit" -> editMove(k)
                 "calc" -> calc.op(if (k == "UP") '+' else '×')
-                "gallery" -> if (gIds.isNotEmpty()) gIdx = (gIdx - 1 + gIds.size) % gIds.size
+                "gallery" -> if (gIds.isNotEmpty()) gIdx = maxOf(gIdx - 1, 0)   // không nhảy vòng xuống cuối danh sách
                 "camera" -> if (k == "LEFT") { camFront = !camFront; flash = false }
                 else if (camFront) Toast.makeText(ctx, "Camera trước không có đèn flash", Toast.LENGTH_SHORT).show()
                 else if (!cam.hasFlash) Toast.makeText(ctx, "Máy không có đèn flash", Toast.LENGTH_SHORT).show()
@@ -1385,7 +1385,7 @@ fun Phone() {
                                 }
                             } else Msg("Cần quyền Máy ảnh")
                             "gallery" -> GalleryView(gOk, gLoaded, gIds.size, gIdx, gBmp) { d ->
-                                if (gIds.isNotEmpty()) gIdx = (gIdx + d + gIds.size) % gIds.size
+                                if (gIds.isNotEmpty()) { val n = gIdx + d; gIdx = if (n < 0) 0 else n % gIds.size }
                             }
                             "recorder" -> Column(Modifier.fillMaxSize()) {
                                 val t = recTick
