@@ -1059,7 +1059,7 @@ fun Phone() {
                 "music" -> if (k == "LEFT") musicStep(-1) else sel = (sel - 1 + size) % size
                 "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
                 "apps" -> if (appsMode == 1) gridMove(if (k == "UP") -APP_COLS else -1) else sel = (sel - 1 + size) % size
-                "recording" -> togglePause()
+                "recording" -> if (k == "UP") togglePause()   // chỉ ▲ tạm dừng / tiếp tục; ◀ không làm gì
                 "calendar" -> if (k == "LEFT") monthOffset--   // ▲▼ không phản hồi
                 "volume" -> if (k == "LEFT") adjustVol(-1) else sel = (sel - 1 + size) % size
                 "brightness" -> if (k == "LEFT" && sel == 0) adjustBright(-1) else sel = (sel - 1 + size) % size
@@ -1080,7 +1080,6 @@ fun Phone() {
                 "snake" -> snake.turn(if (k == "DOWN") 0 to 1 else 1 to 0)
                 "apps" -> if (appsMode == 1) gridMove(if (k == "DOWN") APP_COLS else 1) else sel = (sel + 1) % size
                 "calendar" -> if (k == "RIGHT") monthOffset++   // ▲▼ không phản hồi
-                "recording" -> togglePause()
                 "volume" -> if (k == "RIGHT") adjustVol(1) else sel = (sel + 1) % size
                 "brightness" -> if (k == "RIGHT" && sel == 0) adjustBright(1) else sel = (sel + 1) % size
                 "alarmEdit", "powerEdit" -> editMove(k)
@@ -1406,7 +1405,7 @@ fun Phone() {
                                     val lv = if (recPaused) 0f else (Rec.level() / 32767f).coerceIn(0f, 1f)
                                     val bars = (Math.sqrt(lv.toDouble()) * 16).toInt().coerceIn(0, 16)
                                     Text("█".repeat(bars) + "░".repeat(16 - bars), color = INK, fontFamily = MONO, fontSize = 18.sp)
-                                    Text("OK: lưu", color = INK, fontFamily = MONO, fontSize = 13.sp)
+                                    Text((if (recPaused) "▲: tiếp tục" else "▲: tạm dừng") + "\nOK: lưu", color = INK, fontFamily = MONO, fontSize = 13.sp, textAlign = TextAlign.Center)
                                 }
                             }
                             "recConfirm" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {

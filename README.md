@@ -38,7 +38,7 @@ Cuộc gọi đi và đến hiển thị ngay trên màn hình LCD (tên + số,
 
 ## App con Ghi âm
 
-Menu -> Ghi âm (hoặc biểu tượng "Ghi âm Nokia" riêng): ghi, tạm dừng/tiếp tục, thanh mức âm, nghe lại có thanh tiến trình, xóa có xác nhận (#).
+Menu -> Ghi âm (hoặc biểu tượng "Ghi âm Nokia" riêng): ghi, tạm dừng/tiếp tục bằng phím ▲, thanh mức âm, nghe lại có thanh tiến trình, xóa có xác nhận (#).
 Bản ghi lưu trong bộ nhớ riêng của app (`files/recordings`), dùng chung với tính năng ghi âm cuộc gọi.
 Ghi âm cuộc gọi thu bằng micro nên cần bật loa ngoài mới có tiếng bên kia; hãy báo cho người đối diện khi ghi âm.
 
