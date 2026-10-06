@@ -205,7 +205,7 @@ object Wifi {
 }
 
 fun wifiLines(ctx: Context, nets: List<WifiNet>): List<String> =
-    listOf("Wifi: " + if (Wifi.isOn(ctx)) "BẬT" else "TẮT", "Quét lại") +
+    listOf("Wifi: " + if (Wifi.isOn(ctx)) "BẬT" else "TẮT") +
         nets.map {
             (if (it.connected) "✓" else " ") + "▂▄▆█".take(it.level.coerceIn(0, 4)).padEnd(4) +
                 (if (it.sec > 0) "🔒" else "  ") + it.ssid

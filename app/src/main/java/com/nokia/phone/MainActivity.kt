@@ -659,7 +659,7 @@ fun Phone() {
         }
     }
     fun pickWifi(i: Int) {
-        val n = wifiNets.getOrNull(i - 2) ?: return
+        val n = wifiNets.getOrNull(i - 1) ?: return
         if (n.connected) { Toast.makeText(ctx, "Đang nối với " + n.ssid, Toast.LENGTH_SHORT).show(); return }
         if (n.sec == 0 || n.sec == 1 || n.sec == 4) connectWifi(n, "")
         else Wifi.askPassword(ctx, n.ssid) { pass -> connectWifi(n, pass) }   // hiện bàn phím ảo của máy
@@ -1051,7 +1051,7 @@ fun Phone() {
             return
         }
         val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> SETTINGS.size; "sound", "volume" -> 3; "clock" -> alarms.size + 1
-            "wifi" -> wifiNets.size + 2; "sim" -> simRows(ctx).size; "brightness" -> 2; "battery" -> 3; "storage" -> 3
+            "wifi" -> wifiNets.size + 1; "sim" -> simRows(ctx).size; "brightness" -> 2; "battery" -> 3; "storage" -> 3
             "accounts" -> maxOf(Accts.google(ctx).size, 1); "power" -> 2
             "contacts" -> maxOf(contacts.size, 1); "messages" -> threads.size + 1
             "thread" -> threadMsgs.size + 1; "msgview" -> maxOf(threadMsgs.size, 1); "recorder" -> recs.size + 1
@@ -1132,7 +1132,6 @@ fun Phone() {
                         if (Wifi.toggle(ctx)) scope.launch { delay(2500); if (screen == "wifi") loadWifi() }
                         infoTick++
                     }
-                    sel == 1 -> loadWifi()
                     else -> pickWifi(sel)
                 }
                 "sim" -> simOk { need(Sims.perms(), listOf(Manifest.permission.READ_PHONE_STATE)) { infoTick++ } }
