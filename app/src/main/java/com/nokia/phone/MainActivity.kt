@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import android.widget.Toast
 import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -154,15 +155,33 @@ fun Phone() {
     val tick = homeTick.intValue
     LaunchedEffect(tick) { if (tick > 0) { screen = "home"; sel = 0 } }
 
+    fun freeformOn(): Boolean =
+        ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_FREEFORM_WINDOW_MANAGEMENT) ||
+            Settings.Global.getInt(ctx.contentResolver, "enable_freeform_support", 0) != 0
+
     /** Mở app trong cửa sổ có kích thước đúng bằng vùng nội dung của màn hình LCD nhỏ (cần bật cửa sổ tự do). */
-    fun launch(i: Intent) {
+    fun launch(i: Intent, inLcd: Boolean = true) {
+        val r = lcdRect
+        if (!inLcd || r == null) {
+            try { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            return
+        }
+        if (!freeformOn()) {
+            Toast.makeText(ctx, "Máy chưa bật cửa sổ tự do. Vào Cài đặt > Cửa sổ nhỏ (dev)", Toast.LENGTH_LONG).show()
+        }
+        val opts = ActivityOptions.makeBasic()
+        opts.setLaunchBounds(Rect(r.left.roundToInt(), r.top.roundToInt(), r.right.roundToInt(), r.bottom.roundToInt()))
+        // Ép chế độ cửa sổ tự do (API ẩn, có thể không dùng được trên một số máy -> bỏ qua)
         try {
-            val opts = ActivityOptions.makeBasic()
-            lcdRect?.let { r ->
-                opts.setLaunchBounds(Rect(r.left.roundToInt(), r.top.roundToInt(), r.right.roundToInt(), r.bottom.roundToInt()))
-            }
-            ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), opts.toBundle())
-        } catch (_: Exception) {}
+            ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
+        } catch (_: Throwable) {}
+        // MULTIPLE_TASK: tạo task mới để khung được áp dụng ngay cả khi app đang chạy toàn màn hình
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        try {
+            ctx.startActivity(i, opts.toBundle())
+        } catch (_: Throwable) {
+            try { ctx.startActivity(i) } catch (_: Exception) {}
+        }
     }
     fun dialScreen(n: String) = launch(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(n))))
     fun placeCall(n: String) {
@@ -210,7 +229,7 @@ fun Phone() {
                 "settings" -> when (sel) {
                     0 -> buzz = !buzz
                     1 -> launch(Intent(Settings.ACTION_HOME_SETTINGS))
-                    else -> launch(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+                    else -> launch(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), false)
                 }
                 "snake" -> if (snake.dead) snake.reset()
             }
@@ -275,7 +294,7 @@ fun Phone() {
 
             // Màn hình LCD nhỏ (phần duy nhất thay đổi)
             Box(Modifier.fillMaxWidth().weight(0.72f), contentAlignment = Alignment.Center) {
-            Box(Modifier.fillMaxHeight().aspectRatio(ratio, matchHeightConstraintsFirst = true)
+            Box(Modifier.fillMaxSize()
                 .clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
                 Column(Modifier.fillMaxSize().background(LCD)) {
                     Row(Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 1.dp)) {
@@ -411,9 +430,9 @@ fun ColumnScope.Keys(p: (String) -> Unit) {
         val c = s / 3
         Row(Modifier.fillMaxWidth().height(s)) {
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
-                K(Modifier.fillMaxWidth().height(s * 0.42f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTL") }) { Glyph("●", 14) }
-                K(Modifier.fillMaxWidth().height(s * 0.28f), shape = RoundedCornerShape(14.dp), onClick = { p("CALL") }) {
-                    PhoneIcon(GREEN, false, Modifier.size(26.dp))
+                K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTL") }) { Glyph("●", 14) }
+                K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(14.dp), onClick = { p("CALL") }) {
+                    PhoneIcon(GREEN, false, Modifier.size(31.dp))
                 }
             }
             Column(Modifier.width(s).fillMaxHeight()) {
@@ -434,9 +453,9 @@ fun ColumnScope.Keys(p: (String) -> Unit) {
                 }
             }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
-                K(Modifier.fillMaxWidth().height(s * 0.42f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTR") }) { Glyph("●", 14) }
-                K(Modifier.fillMaxWidth().height(s * 0.28f), shape = RoundedCornerShape(14.dp), onClick = { p("END") }) {
-                    PhoneIcon(RED, true, Modifier.size(26.dp))
+                K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(16.dp), onClick = { p("SOFTR") }) { Glyph("●", 14) }
+                K(Modifier.fillMaxWidth().height(s * 0.336f), shape = RoundedCornerShape(14.dp), onClick = { p("END") }) {
+                    PhoneIcon(RED, true, Modifier.size(31.dp))
                 }
             }
         }
