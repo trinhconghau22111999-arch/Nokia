@@ -1645,12 +1645,12 @@ fun Phone() {
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth()) {
-                        Box(Modifier.weight(1f).clickable { press("SOFTL") }.padding(horizontal = 6.dp, vertical = 5.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        // Vùng chạm chỉ bao quanh chữ (không chiếm nửa hàng như trước)
+                        Box(Modifier.clickable { press("SOFTL") }.padding(horizontal = 6.dp, vertical = 5.dp)) {
                             Text(left, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
                         }
-                        Box(Modifier.weight(1f).clickable { press("SOFTR") }.padding(horizontal = 6.dp, vertical = 5.dp),
-                            contentAlignment = Alignment.CenterEnd) {
+                        Box(Modifier.clickable { press("SOFTR") }.padding(horizontal = 6.dp, vertical = 5.dp)) {
                             Text(right, color = INK, fontWeight = FontWeight.Bold, fontFamily = MONO, fontSize = 13.sp)
                         }
                     }
