@@ -52,6 +52,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -1259,7 +1260,9 @@ fun Phone() {
             Box(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().background(LCD).statusBarsPadding()) {
                     Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { lcdRect = it.boundsInWindow() }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)) {
+                        // Camera: khung xem trước phủ kín vùng LCD, không chừa rìa hai bên
+                        .padding(horizontal = if (screen == "camera" && camOk) 0.dp else 6.dp,
+                            vertical = if (screen == "camera" && camOk) 0.dp else 2.dp)) {
                         when (screen) {
                             "home" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1365,7 +1368,7 @@ fun Phone() {
                             "msgview" -> MsgView(curName, threadMsgs.getOrNull(mv), mv, threadMsgs.size)
                             "compose" -> ComposeView(cStage, cTo, cName, entry)
                             "calc" -> CalcScreen(calc)
-                            "camera" -> if (camOk) Box(Modifier.fillMaxSize()) {
+                            "camera" -> if (camOk) Box(Modifier.fillMaxSize().clipToBounds()) {
                                 CameraView(cam, camFront, flash)
                                 Box(Modifier.fillMaxSize().clickable { press("OK") })
                                 Text((if (camFront) "Trước" else "Sau") + "  ◀▶ đổi  ▲ flash: " + (if (flash) "BẬT" else "TẮT"),

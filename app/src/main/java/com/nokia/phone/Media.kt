@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -51,7 +52,14 @@ class CamHolder {
 @Composable
 fun CameraView(holder: CamHolder, front: Boolean, flash: Boolean) {
     val ctx = LocalContext.current
-    val view = remember { PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
+    // COMPATIBLE (TextureView): khung xem trước bị cắt đúng theo ô LCD. Chế độ mặc định (SurfaceView) có thể
+    // tràn ra ngoài ô, đè lên cả bàn phím bên dưới khi phóng to để lấp đầy (FILL_CENTER).
+    val view = remember {
+        PreviewView(ctx).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
     SideEffect { holder.torch = flash }
     LaunchedEffect(flash) { if (holder.hasFlash) holder.control?.enableTorch(flash) }
     DisposableEffect(front) {
@@ -87,7 +95,7 @@ fun CameraView(holder: CamHolder, front: Boolean, flash: Boolean) {
             holder.hasFlash = false
         }
     }
-    AndroidView({ view }, Modifier.fillMaxSize())
+    AndroidView({ view }, Modifier.fillMaxSize().clipToBounds())
 }
 
 /** Chụp và lưu vào Pictures/Nokia (hiện trong Thư viện). */
