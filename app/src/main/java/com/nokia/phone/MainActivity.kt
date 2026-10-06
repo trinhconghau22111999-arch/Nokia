@@ -27,7 +27,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -62,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -113,6 +113,8 @@ class MainActivity : ComponentActivity() {
             window.attributes.layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
+        @Suppress("DEPRECATION")
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
         hideBars()
         setContent { Phone() }
     }
@@ -120,7 +122,9 @@ class MainActivity : ComponentActivity() {
     private fun hideBars() {
         val c = WindowInsetsControllerCompat(window, window.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        c.hide(WindowInsetsCompat.Type.systemBars())
+        c.hide(WindowInsetsCompat.Type.navigationBars())
+        c.show(WindowInsetsCompat.Type.statusBars())
+        c.isAppearanceLightStatusBars = true // nền LCD sáng -> icon tối
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -134,7 +138,45 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+fun dateNow(): String = SimpleDateFormat("EEEE, dd/MM/yyyy", Locale.getDefault()).format(Date())
+
 fun timeNow(): String = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+
+/** Lịch tháng (tuần bắt đầu từ thứ 2). offset = số tháng lệch so với tháng hiện tại. */
+@Composable
+fun MonthCalendar(offset: Int) {
+    val first = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); add(Calendar.MONTH, offset) }
+    val today = Calendar.getInstance()
+    val sameMonth = first.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+        first.get(Calendar.MONTH) == today.get(Calendar.MONTH)
+    val days = first.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val lead = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val rows = (lead + days + 6) / 7
+    Column(Modifier.fillMaxWidth()) {
+        Text("◀  Tháng ${first.get(Calendar.MONTH) + 1}/${first.get(Calendar.YEAR)}  ▶",
+            Modifier.fillMaxWidth().padding(vertical = 2.dp), textAlign = TextAlign.Center,
+            color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Row(Modifier.fillMaxWidth()) {
+            listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN").forEach {
+                Text(it, Modifier.weight(1f), textAlign = TextAlign.Center, color = INK,
+                    fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+        }
+        for (r in 0 until rows) {
+            Row(Modifier.fillMaxWidth()) {
+                for (c in 0 until 7) {
+                    val d = r * 7 + c - lead + 1
+                    val isToday = sameMonth && d == today.get(Calendar.DAY_OF_MONTH)
+                    Box(Modifier.weight(1f).height(26.dp).background(if (isToday) INK else Color.Transparent),
+                        contentAlignment = Alignment.Center) {
+                        if (d in 1..days) Text(d.toString(), color = if (isToday) LCD else INK,
+                            fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun Phone() {
@@ -145,6 +187,7 @@ fun Phone() {
     var buzz by remember { mutableStateOf(true) }
     var now by remember { mutableStateOf(timeNow()) }
     var apps by remember { mutableStateOf(listOf<AppInfo>()) }
+    var monthOffset by remember { mutableIntStateOf(0) }
     var lcdRect by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val snake = remember { Snake() }
     val focus = remember { FocusRequester() }
@@ -212,17 +255,23 @@ fun Phone() {
             .distinctBy { it.pkg }
             .sortedBy { it.label.lowercase() }
     }
-    fun open(s: String) { screen = s; sel = 0; if (s == "snake") snake.reset(); if (s == "apps") loadApps() }
+    fun open(s: String) { screen = s; sel = 0; monthOffset = 0; if (s == "snake") snake.reset(); if (s == "apps") loadApps() }
     fun back() { when (screen) { "home" -> {}; "menu" -> open("home"); else -> open("menu") } }
 
     fun press(k: String) {
         if (buzz) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 4; else -> 1 }
         when (k) {
-            "UP", "LEFT" -> if (screen == "snake") snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
-                else sel = (sel - 1 + size) % size
-            "DOWN", "RIGHT" -> if (screen == "snake") snake.turn(if (k == "DOWN") 0 to 1 else 1 to 0)
-                else sel = (sel + 1) % size
+            "UP", "LEFT" -> when (screen) {
+                "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
+                "clock" -> monthOffset--
+                else -> sel = (sel - 1 + size) % size
+            }
+            "DOWN", "RIGHT" -> when (screen) {
+                "snake" -> snake.turn(if (k == "DOWN") 0 to 1 else 1 to 0)
+                "clock" -> monthOffset++
+                else -> sel = (sel + 1) % size
+            }
             "OK", "SOFTL" -> when (screen) {
                 "home" -> open("menu")
                 "menu" -> when (val id = MENU[sel].second) {
@@ -275,7 +324,7 @@ fun Phone() {
         Column(
             Modifier.fillMaxSize()
                 .background(Brush.verticalGradient(listOf(Color(0xFF4469BC), Color(0xFF223C78))))
-                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp)
+                .padding(bottom = 10.dp)
                 .focusRequester(focus).focusable()
                 .onKeyEvent { e ->
                     if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
@@ -293,37 +342,28 @@ fun Phone() {
                     true
                 }
         ) {
-            // Loa + logo (mỏng gọn)
-            Box(Modifier.fillMaxWidth(), Alignment.Center) {
-                Box(Modifier.width(70.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF111B36)))
-            }
-            Text("NOKIA", Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 5.dp), textAlign = TextAlign.Center,
-                color = Color(0xFFE6ECFA), fontWeight = FontWeight.Black, fontSize = 12.sp, letterSpacing = 4.sp)
-
             // Màn hình LCD nhỏ (phần duy nhất thay đổi)
-            Box(Modifier.fillMaxWidth().weight(0.72f), contentAlignment = Alignment.Center) {
-            Box(Modifier.fillMaxSize()
-                .clip(RoundedCornerShape(14.dp)).background(Color(0xFF111B36)).padding(7.dp)) {
-                Column(Modifier.fillMaxSize().background(LCD)) {
-                    Row(Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 1.dp)) {
-                        Text("▂▄▆", color = LCD, fontFamily = MONO, fontSize = 11.sp)
-                        Spacer(Modifier.weight(1f))
-                        Text(now.take(5), color = LCD, fontFamily = MONO, fontSize = 11.sp)
-                        Spacer(Modifier.width(8.dp))
-                        Text("▮▮▮", color = LCD, fontFamily = MONO, fontSize = 11.sp)
-                    }
+            Box(Modifier.fillMaxWidth().weight(0.72f).background(LCD), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().background(LCD).statusBarsPadding()) {
                     Box(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { lcdRect = it.boundsInWindow() }
                         .padding(horizontal = 6.dp, vertical = 2.dp)) {
                         when (screen) {
                             "home" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
-                                Text("NOKIA", color = INK, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
-                                Text(now.take(5), color = INK, fontSize = 40.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
-                                Text(dial, color = INK, fontSize = 20.sp, fontFamily = MONO, maxLines = 1, overflow = TextOverflow.Clip)
+                                Text("NOKIA", color = INK, fontSize = 22.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(now.take(5), color = INK, fontSize = 80.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                    Text(dateNow(), color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO,
+                                        maxLines = 1, overflow = TextOverflow.Clip)
+                                }
+                                Text(dial, color = INK, fontSize = 32.sp, fontFamily = MONO, maxLines = 1, overflow = TextOverflow.Clip)
                             }
                             "menu" -> Lines(MENU.map { it.first }, sel, tapItem, scroll)
                             "apps" -> Lines(apps.map { it.label }.ifEmpty { listOf("(trống)") }, sel, tapItem, scroll)
-                            "clock" -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                Text(now, color = INK, fontSize = 34.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                            "clock" -> Column(Modifier.fillMaxSize(), Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
+                                Text(now, color = INK, fontSize = 44.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                Text(dateNow(), color = INK, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                MonthCalendar(monthOffset)
                             }
                             "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher", "Cửa sổ nhỏ (dev)", "Thông tin máy"), sel, tapItem, scroll)
                             "snake" -> Column(Modifier.fillMaxSize()) {
@@ -445,7 +485,7 @@ fun NumKey(d: String, sub: String, mod: Modifier, onClick: () -> Unit) {
 fun ColumnScope.Keys(p: (String) -> Unit) {
     val dk = Color(0xFFB4BCCB)
     // Bố cục như Nokia thật: phím mềm (cao) ở trên, Gọi/Tắt (thấp) ở dưới, D-pad tròn ở giữa.
-    BoxWithConstraints(Modifier.fillMaxWidth().weight(0.27f), contentAlignment = Alignment.Center) {
+    BoxWithConstraints(Modifier.fillMaxWidth().weight(0.27f).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
         val s = minOf(maxHeight, maxWidth * 0.48f)
         val c = s / 3
         Row(Modifier.fillMaxWidth().height(s)) {
@@ -458,17 +498,17 @@ fun ColumnScope.Keys(p: (String) -> Unit) {
             Column(Modifier.width(s).fillMaxHeight()) {
                 Row(Modifier.height(c)) {
                     Spacer(Modifier.size(c))
-                    K(Modifier.size(c), shape = CircleShape, onClick = { p("UP") }) { Glyph("▲", 14) }
+                    K(Modifier.size(c), shape = RoundedCornerShape(10.dp), onClick = { p("UP") }) { Glyph("▲", 14) }
                     Spacer(Modifier.size(c))
                 }
                 Row(Modifier.height(c)) {
-                    K(Modifier.size(c), shape = CircleShape, onClick = { p("LEFT") }) { Glyph("◀", 14) }
-                    K(Modifier.size(c), shape = CircleShape, bg = dk, onClick = { p("OK") }) { Glyph("OK", 15) }
-                    K(Modifier.size(c), shape = CircleShape, onClick = { p("RIGHT") }) { Glyph("▶", 14) }
+                    K(Modifier.size(c), shape = RoundedCornerShape(10.dp), onClick = { p("LEFT") }) { Glyph("◀", 14) }
+                    K(Modifier.size(c), shape = RoundedCornerShape(10.dp), bg = dk, onClick = { p("OK") }) { Glyph("OK", 15) }
+                    K(Modifier.size(c), shape = RoundedCornerShape(10.dp), onClick = { p("RIGHT") }) { Glyph("▶", 14) }
                 }
                 Row(Modifier.height(c)) {
                     Spacer(Modifier.size(c))
-                    K(Modifier.size(c), shape = CircleShape, onClick = { p("DOWN") }) { Glyph("▼", 14) }
+                    K(Modifier.size(c), shape = RoundedCornerShape(10.dp), onClick = { p("DOWN") }) { Glyph("▼", 14) }
                     Spacer(Modifier.size(c))
                 }
             }
@@ -481,7 +521,7 @@ fun ColumnScope.Keys(p: (String) -> Unit) {
         }
     }
     // Bàn phím số
-    Column(Modifier.fillMaxWidth().weight(0.40f)) {
+    Column(Modifier.fillMaxWidth().weight(0.40f).padding(horizontal = 12.dp)) {
         listOf("123", "456", "789", "*0#").forEach { row ->
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 row.forEach { ch ->
