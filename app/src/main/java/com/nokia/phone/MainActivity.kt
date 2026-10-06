@@ -350,7 +350,6 @@ fun Phone() {
                         .padding(horizontal = 6.dp, vertical = 2.dp)) {
                         when (screen) {
                             "home" -> Column(Modifier.fillMaxSize().clickable { press("OK") }, Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
-                                Text("NOKIA", color = INK, fontSize = 22.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(now.take(5), color = INK, fontSize = 80.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                     Text(dateNow(), color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO,
