@@ -1426,10 +1426,11 @@ fun Phone() {
                                 else if (calls.isEmpty()) Box(Modifier.weight(1f)) { Msg(if (clLoaded) "Chưa có cuộc gọi nào" else "Đang tải...") }
                                 else {
                                     val e = calls.getOrNull(sel)
-                                    Hint(if (e != null) CallHistory.detail(e) else "")
-                                    Hint(if (e != null && e.name.isNotEmpty() && e.name != e.number) e.number else "OK: gọi lại")
-                                    Spacer(Modifier.height(4.dp))
-                                    Box(Modifier.weight(1f)) { Lines(calls.map { CallHistory.line(it) }, sel, tapItem, scroll) }
+                                    // Ngày giờ + số hiện ngay dưới ô đang chọn
+                                    val info = if (e == null) emptyList() else listOfNotNull(
+                                        CallHistory.detail(e),
+                                        if (e.name.isNotEmpty() && e.name != e.number) e.number else null)
+                                    Box(Modifier.weight(1f)) { Lines(calls.map { CallHistory.line(it) }, sel, tapItem, scroll, info) }
                                 }
                             }
                             "music" -> Column(Modifier.fillMaxSize()) {
@@ -1494,12 +1495,15 @@ fun Phone() {
 }
 
 @Composable
-fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -> Unit) {
+fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -> Unit, detail: List<String> = emptyList()) {
+    // detail: các dòng chữ nhỏ chèn ngay dưới ô đang chọn (không chọn được, không chiếm số thứ tự)
+    val extra = if (sel in items.indices) detail.size else 0
     // Mỗi hàng cao cố định; số hàng hiện ra = chiều cao còn trống / chiều cao hàng -> lấp đầy phần dưới màn hình
     val rowH = with(LocalDensity.current) { (14f * 1.7f).sp.toDp() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val visible = maxOf(1, (maxHeight / rowH).toInt())
-        val start = (sel - visible / 2).coerceIn(0, maxOf(0, items.size - visible))
+        val total = items.size + extra
+        val start = (sel - visible / 2).coerceIn(0, maxOf(0, total - visible))
         Column(Modifier.fillMaxSize().pointerInput(Unit) {
             var acc = 0f
             detectVerticalDragGestures(onDragEnd = { acc = 0f }) { _, d ->
@@ -1508,13 +1512,21 @@ fun Lines(items: List<String>, sel: Int, onTap: (Int) -> Unit, onScroll: (Int) -
                 if (acc < -45f) { onScroll(-1); acc = 0f } else if (acc > 45f) { onScroll(1); acc = 0f }
             }
         }) {
-            items.drop(start).take(visible).forEachIndexed { n, t ->
-                val i = start + n
-                Box(Modifier.fillMaxWidth().height(rowH).clickable { onTap(i) }
-                    .background(if (i == sel) INK else LCD).padding(horizontal = 6.dp),
-                    contentAlignment = Alignment.CenterStart) {
-                    Text(t, color = if (i == sel) LCD else INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            for (row in start until minOf(total, start + visible)) {
+                if (row > sel && row <= sel + extra) {
+                    Box(Modifier.fillMaxWidth().height(rowH).background(LCD).padding(start = 20.dp, end = 6.dp),
+                        contentAlignment = Alignment.CenterStart) {
+                        Text(detail[row - sel - 1], color = INK, fontFamily = MONO, fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                } else {
+                    val i = if (row > sel + extra) row - extra else row
+                    Box(Modifier.fillMaxWidth().height(rowH).clickable { onTap(i) }
+                        .background(if (i == sel) INK else LCD).padding(horizontal = 6.dp),
+                        contentAlignment = Alignment.CenterStart) {
+                        Text(items[i], color = if (i == sel) LCD else INK, fontFamily = MONO, fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
