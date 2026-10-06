@@ -406,6 +406,10 @@ fun Phone() {
     var curAddr by remember { mutableStateOf("") }
     var curName by remember { mutableStateOf("") }
     var mv by remember { mutableIntStateOf(0) }
+    var delTarget by remember { mutableStateOf(listOf<Sms>()) }         // tin sắp xóa (xác nhận)
+    var delBack by remember { mutableStateOf("thread") }                // màn hình quay về sau khi xóa / hủy
+    var delWhole by remember { mutableStateOf(false) }                  // true = xóa cả hội thoại
+    var delName by remember { mutableStateOf("") }
     var cStage by remember { mutableIntStateOf(0) }
     var cTo by remember { mutableStateOf("") }
     var cName by remember { mutableStateOf("") }
@@ -456,7 +460,7 @@ fun Phone() {
     var prevScreen by remember { mutableStateOf(screen) }
     LaunchedEffect(screen) {
         fun grp(x: String) = when (x) {
-            "messages", "thread", "msgview", "compose" -> "sms"
+            "messages", "thread", "msgview", "compose", "smsConfirm" -> "sms"
             "recorder", "recConfirm", "recording" -> "rec"
             "power", "powerEdit" -> "power"
             else -> x
@@ -471,7 +475,7 @@ fun Phone() {
             "sms" -> {
                 smsAll = emptyList(); threads = emptyList(); threadMsgs = emptyList()
                 contacts = emptyList(); cPick = -1
-                curKey = ""; curAddr = ""; curName = ""; mv = 0
+                curKey = ""; curAddr = ""; curName = ""; mv = 0; delTarget = emptyList()
                 cStage = 0; cTo = ""; cName = ""; cFrom = "new"
                 entry.reset()
             }
@@ -831,7 +835,7 @@ fun Phone() {
     val audioPerms = if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.READ_MEDIA_AUDIO)
         else listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 
-    fun inSms() = screen == "messages" || screen == "thread" || screen == "msgview" || screen == "compose"
+    fun inSms() = screen == "messages" || screen == "thread" || screen == "msgview" || screen == "compose" || screen == "smsConfirm"
     fun inRec() = screen == "recorder" || screen == "recConfirm" || screen == "recording"
     // Kết quả tải xong muộn mà đã rời màn hình thì bỏ đi, không giữ lại
     fun loadContacts() { scope.launch { val c = withContext(Dispatchers.IO) { Contacts.load(ctx) }; if (screen == "contacts" || inSms()) contacts = c; if (screen == "contacts") ctLoaded = true } }
@@ -877,6 +881,26 @@ fun Phone() {
         curName = t?.name ?: curAddr
         threadMsgs = smsAll.filter { addrKey(it.addr) == key }
         screen = "thread"; sel = 0
+    }
+    /** Hỏi xác nhận xóa; back = màn hình quay về. whole = xóa cả hội thoại. */
+    fun askDeleteSms(list: List<Sms>, back: String, whole: Boolean, name: String = "") {
+        if (list.isEmpty()) return
+        delTarget = list; delBack = back; delWhole = whole; delName = name
+        screen = "smsConfirm"
+    }
+    fun doDeleteSms() {
+        val target = delTarget; val back = delBack
+        delTarget = emptyList()
+        screen = back
+        scope.launch {
+            withContext(Dispatchers.IO) { SmsRepo.hide(ctx, target) }
+            loadSms {
+                if (back == "messages") sel = sel.coerceIn(0, threads.size)
+                else if (threadMsgs.isEmpty()) { curKey = ""; screen = "messages"; sel = 0 }   // hết tin trong hội thoại
+                else sel = sel.coerceIn(0, threadMsgs.size)
+                Toast.makeText(ctx, "Đã xóa khỏi app", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
     fun startCompose(to: String, name: String, from: String) {
         cTo = to; cName = name; cFrom = from; cPick = -1
@@ -1032,6 +1056,7 @@ fun Phone() {
                 else if (cFrom == "thread") screen = "thread" else open("messages")
             "recording" -> stopRecording()
             "recConfirm" -> screen = "recorder"
+            "smsConfirm" -> screen = delBack
             else -> if (fromHome) open("home") else open("menu")
         }
     }
@@ -1049,6 +1074,12 @@ fun Phone() {
             if (k == "OK" || k == "SOFTL") { deleteRec(sel); screen = "recorder" }
             else if (k == "END") open("home")
             else if (k == "SOFTR" || k == "UP" || k == "DOWN" || k == "LEFT" || k == "RIGHT") screen = "recorder"
+            return
+        }
+        if (screen == "smsConfirm") {   // Xóa tin? OK/Có = xóa, phím khác = hủy
+            if (k == "OK" || k == "SOFTL") doDeleteSms()
+            else if (k == "END") open("home")
+            else if (k == "SOFTR" || k == "UP" || k == "DOWN" || k == "LEFT" || k == "RIGHT") screen = delBack
             return
         }
         val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> SETTINGS.size; "sound", "volume" -> 3; "clock" -> alarms.size + 1
@@ -1197,6 +1228,10 @@ fun Phone() {
                     if (k[0].isDigit()) { cTo += k; cName = "" } else if (k == "*" && cTo.isEmpty()) cTo = "+"
                 } else entry.key(k, SystemClock.uptimeMillis())
                 "recorder" -> if (k == "#" && sel > 0) screen = "recConfirm"
+                "messages" -> if (k == "#" && sel > 0) threads.getOrNull(sel - 1)?.let { t ->
+                    askDeleteSms(smsAll.filter { addrKey(it.addr) == t.key }, "messages", true, t.name) }
+                "thread" -> if (k == "#" && sel > 0) askDeleteSms(listOfNotNull(threadMsgs.getOrNull(sel - 1)), "thread", false)
+                "msgview" -> if (k == "#") askDeleteSms(listOfNotNull(threadMsgs.getOrNull(mv)), "thread", false)
                 "music" -> when (k) {
                     "4" -> Music.seek(-10_000L)                                  // tua lùi 10 giây
                     "6" -> Music.seek(10_000L)                                   // tua tới 10 giây
@@ -1222,7 +1257,7 @@ fun Phone() {
         "clock" -> "Sửa"; "calendar" -> "Hôm nay"
         "contacts" -> "Gọi"; "messages", "thread" -> "Chọn"; "msgview" -> "Trả lời"
         "compose" -> if (cStage == 1) "Gửi" else "Tiếp"
-        "calc" -> "Xóa"; "camera" -> "Chụp"; "recording" -> "Lưu"; "recConfirm" -> "Có"
+        "calc" -> "Xóa"; "camera" -> "Chụp"; "recording" -> "Lưu"; "recConfirm", "smsConfirm" -> "Có"
         "recorder" -> if (sel == 0) "Ghi" else if (playing != null && playing == recs.getOrNull(sel - 1)?.file?.absolutePath) "Dừng" else "Nghe"
         "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) "Xóa" else "Lưu"
         "calllog" -> "Gọi"
@@ -1231,7 +1266,7 @@ fun Phone() {
     }
     val right = when (screen) {
         "home" -> if (dial.isEmpty()) "" else "Xóa"
-        "reset", "recConfirm" -> "Không"
+        "reset", "recConfirm", "smsConfirm" -> "Không"
         "compose" -> if ((cStage == 0 && cTo.isNotEmpty()) || (cStage == 1 && entry.text.isNotEmpty())) "Xóa" else "Về"
         "contacts" -> if (entry.text.isNotEmpty()) "Xóa" else "Về"
         else -> "Về"
@@ -1379,9 +1414,14 @@ fun Phone() {
                                     }
                                 }
                             }
-                            "messages" -> Lines(listOf("+ Soạn tin mới") + threads.map {
-                                (if (it.last.sent) "→ " else "") + it.name + ": " + it.last.body.replace('\n', ' ')
-                            }, sel, tapItem, scroll)
+                            "messages" -> Column(Modifier.fillMaxSize()) {
+                                Box(Modifier.weight(1f)) {
+                                    Lines(listOf("+ Soạn tin mới") + threads.map {
+                                        (if (it.last.sent) "→ " else "") + it.name + ": " + it.last.body.replace('\n', ' ')
+                                    }, sel, tapItem, scroll)
+                                }
+                                if (sel > 0) Hint("#: xóa hội thoại")
+                            }
                             "thread" -> Column(Modifier.fillMaxSize()) {
                                 Head(curName)
                                 Box(Modifier.weight(1f)) {
@@ -1389,6 +1429,7 @@ fun Phone() {
                                         (if (it.sent) "→ " else "← ") + it.body.replace('\n', ' ')
                                     }, sel, tapItem, scroll)
                                 }
+                                if (sel > 0) Hint("#: xóa tin")
                             }
                             "msgview" -> MsgView(curName, threadMsgs.getOrNull(mv), mv, threadMsgs.size)
                             "compose" -> ComposeView(cStage, cTo, cName, entry)
@@ -1433,6 +1474,16 @@ fun Phone() {
                                     Text("█".repeat(bars) + "░".repeat(16 - bars), color = INK, fontFamily = MONO, fontSize = 18.sp)
                                     Text((if (recPaused) "▲: tiếp tục" else "▲: tạm dừng") + "\nOK: lưu", color = INK, fontFamily = MONO, fontSize = 13.sp, textAlign = TextAlign.Center)
                                 }
+                            }
+                            "smsConfirm" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+                                Text(if (delWhole) "Xóa cả hội thoại?" else "Xóa tin nhắn này?", color = INK, fontFamily = MONO,
+                                    fontWeight = FontWeight.Bold, fontSize = 20.sp, textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(8.dp))
+                                Text(if (delWhole) delName + "  (" + delTarget.size + " tin)" else delTarget.firstOrNull()?.body.orEmpty().replace('\n', ' '),
+                                    color = INK, fontFamily = MONO, fontSize = 14.sp, textAlign = TextAlign.Center,
+                                    maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Chỉ xóa trong app này", color = INK.copy(alpha = 0.6f), fontFamily = MONO, fontSize = 12.sp)
                             }
                             "recConfirm" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {
                                 val r = recs.getOrNull(sel - 1)

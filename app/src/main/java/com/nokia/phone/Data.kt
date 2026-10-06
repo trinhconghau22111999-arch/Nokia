@@ -149,7 +149,20 @@ object SmsRepo {
             }
             if (!dup) out.add(l)
         }
-        return out.sortedByDescending { it.date }
+        val hidden = hiddenIds(ctx)
+        return out.filter { smsId(it) !in hidden }.sortedByDescending { it.date }
+    }
+
+    // ---- Xóa tin ----
+    // App không phải ứng dụng SMS mặc định nên Android không cho xóa trong hộp thư hệ thống.
+    // "Xóa" ở đây = ẩn khỏi Tin nhắn của app này (nhớ lâu dài); bản gốc vẫn còn trong app Tin nhắn của máy.
+    private fun hprefs(ctx: Context) = ctx.getSharedPreferences("sms_hidden", Context.MODE_PRIVATE)
+    fun smsId(s: Sms): String = addrKey(s.addr) + "|" + s.date + "|" + s.body.hashCode()
+    private fun hiddenIds(ctx: Context): Set<String> = hprefs(ctx).getStringSet("ids", emptySet()) ?: emptySet()
+    fun hide(ctx: Context, list: List<Sms>) {
+        val cur = HashSet(hiddenIds(ctx))     // bản sao: Set trả về từ SharedPreferences không được sửa trực tiếp
+        list.forEach { cur.add(smsId(it)) }
+        hprefs(ctx).edit().putStringSet("ids", cur).apply()
     }
 
     @Suppress("DEPRECATION")

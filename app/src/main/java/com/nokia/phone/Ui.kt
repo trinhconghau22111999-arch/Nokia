@@ -82,6 +82,7 @@ fun MsgView(name: String, m: Sms?, idx: Int, total: Int) {
             Text(m.body, Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(4.dp),
                 color = INK, fontFamily = MONO, fontSize = 16.sp)
         }
+        Hint("#: xóa tin")
     }
 }
 
