@@ -396,6 +396,11 @@ fun Phone() {
     var btOn by remember { mutableStateOf(false) }
     var dialerOn by remember { mutableStateOf(false) }
     var smsOn by remember { mutableStateOf(isDefaultSms(ctx)) }
+    var wallPick by remember { mutableStateOf<Bitmap?>(null) }          // ảnh vừa chọn, đang xem thử trước khi đặt
+    var wallFx by remember { mutableStateOf(0.5f) }
+    var wallFy by remember { mutableStateOf(0.5f) }
+    var wallFw by remember { mutableStateOf(0f) }                         // kích thước khung xem thử (px)
+    var wallFh by remember { mutableStateOf(0f) }
     var wallBmp by remember { mutableStateOf<ImageBitmap?>(null) }       // hình nền màn hình khóa do người dùng chọn
     var infoTick by remember { mutableIntStateOf(0) }      // làm tươi số liệu (wifi, pin, SIM...) mỗi giây
     var wifiNets by remember { mutableStateOf(listOf<WifiNet>()) }
@@ -415,9 +420,19 @@ fun Phone() {
     LaunchedEffect(Unit) { wallBmp = withContext(Dispatchers.IO) { Wallpaper.load(ctx) }?.asImageBitmap() }
     val wallReq = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u ->
         if (u != null) scope.launch {
-            val b = withContext(Dispatchers.IO) { Wallpaper.save(ctx, u) }
-            if (b != null) { wallBmp = b.asImageBitmap(); Toast.makeText(ctx, "Đã đặt hình nền màn hình khóa", Toast.LENGTH_SHORT).show() }
+            val b = withContext(Dispatchers.IO) { Wallpaper.decode(ctx, u) }
+            if (b != null) { wallFx = 0.5f; wallFy = 0.5f; wallPick = b }      // hiện khung xem thử, chưa đặt ngay
             else Toast.makeText(ctx, "Không đọc được ảnh này", Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun confirmWall() {
+        val b = wallPick ?: return
+        val x = wallFx; val y = wallFy; val w = wallFw; val h = wallFh
+        scope.launch {
+            val out = withContext(Dispatchers.IO) { Wallpaper.saveCrop(ctx, b, x, y, w, h) }
+            wallPick = null
+            if (out != null) { wallBmp = out.asImageBitmap(); Toast.makeText(ctx, "Đã đặt hình nền màn hình khóa", Toast.LENGTH_SHORT).show() }
+            else Toast.makeText(ctx, "Không lưu được ảnh", Toast.LENGTH_SHORT).show()
         }
     }
     var contacts by remember { mutableStateOf(listOf<Contact>()) }
@@ -1148,6 +1163,18 @@ fun Phone() {
             else lockAt = 0L
             return
         }
+        if (wallPick != null) {   // Xem thử hình nền: ▲▼◀▶ dời ảnh, OK = đặt, Về = hủy
+            val st = 0.08f
+            when (k) {
+                "OK", "SOFTL" -> confirmWall()
+                "SOFTR", "END" -> wallPick = null
+                "LEFT" -> wallFx = (wallFx + st).coerceIn(0f, 1f)     // ảnh dịch sang trái
+                "RIGHT" -> wallFx = (wallFx - st).coerceIn(0f, 1f)
+                "UP" -> wallFy = (wallFy + st).coerceIn(0f, 1f)
+                "DOWN" -> wallFy = (wallFy - st).coerceIn(0f, 1f)
+            }
+            return
+        }
         if (screen == "recConfirm") {   // Xóa bản ghi? OK/Có = xóa, phím khác = hủy
             if (k == "OK" || k == "SOFTL") { deleteRec(sel); screen = "recorder" }
             else if (k == "END") open("home")
@@ -1339,7 +1366,7 @@ fun Phone() {
     val scroll: (Int) -> Unit = { d -> press(if (d > 0) "DOWN" else "UP") }
 
     SideEffect { NokiaState.listener = { k -> press(k) } }
-    BackHandler { if (!locked) back() }
+    BackHandler { if (wallPick != null) wallPick = null else if (!locked) back() }
 
     val left = when (screen) {
         "home" -> "Menu"; "menu", "apps" -> "Chọn"; "settings", "sound", "wifi", "sim", "power" -> "Chọn"; "reset" -> "Có"
@@ -1656,6 +1683,12 @@ fun Phone() {
                     }
                 }
                 if (locked) LockScreen(now.take(5), dateNow(), lockAt != 0L, wallBmp)
+                wallPick?.let { pb ->
+                    if (!locked) WallPreview(pb, wallFx, wallFy,
+                        onSize = { w, h -> wallFw = w; wallFh = h },
+                        onPan = { x, y -> wallFx = x; wallFy = y },
+                        onSet = { press("OK") }, onCancel = { press("SOFTR") })
+                }
             }
             }
             }
