@@ -677,11 +677,6 @@ fun Phone() {
         Bright.set(ctx, if (wrap && cur >= 255) 1 else (cur + d * 26).coerceIn(1, 255))
         infoTick++
     }
-    fun toggleAutoBright() {
-        if (!Bright.canWrite(ctx)) { askWriteSettings(); return }
-        Bright.setAuto(ctx, !Bright.auto(ctx))
-        infoTick++
-    }
     fun simOk(perm: () -> Unit) {
         val rows = simRows(ctx)
         val sims = Sims.list(ctx)
@@ -1051,7 +1046,7 @@ fun Phone() {
             return
         }
         val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> SETTINGS.size; "sound", "volume" -> 3; "clock" -> alarms.size + 1
-            "wifi" -> wifiNets.size + 1; "sim" -> simRows(ctx).size; "brightness" -> 2; "battery" -> 3; "storage" -> 3
+            "wifi" -> wifiNets.size + 1; "sim" -> simRows(ctx).size; "brightness" -> 1; "battery" -> 3; "storage" -> 3
             "accounts" -> maxOf(Accts.google(ctx).size, 1); "power" -> 2
             "contacts" -> maxOf(contacts.size, 1); "messages" -> threads.size + 1
             "thread" -> threadMsgs.size + 1; "msgview" -> maxOf(threadMsgs.size, 1); "recorder" -> recs.size + 1
@@ -1135,7 +1130,7 @@ fun Phone() {
                     else -> pickWifi(sel)
                 }
                 "sim" -> simOk { need(Sims.perms(), listOf(Manifest.permission.READ_PHONE_STATE)) { infoTick++ } }
-                "brightness" -> if (sel == 0) adjustBright(1, true) else toggleAutoBright()
+                "brightness" -> adjustBright(1, true)
                 "battery" -> if (sel == 2) openSettings(ctx, Settings.ACTION_BATTERY_SAVER_SETTINGS)
                 "accounts" -> if (!granted(Manifest.permission.GET_ACCOUNTS)) need(listOf(Manifest.permission.GET_ACCOUNTS)) { infoTick++ }
                     else openSettings(ctx, Settings.ACTION_SYNC_SETTINGS)
@@ -1308,8 +1303,7 @@ fun Phone() {
                             "sim" -> { val t = infoTick
                                 Lines(simRows(ctx).map { it.first }, sel, tapItem, scroll) }
                             "brightness" -> { val t = infoTick; val b = Bright.get(ctx)
-                                Lines(listOf("Độ sáng " + Bright.bar(b) + " " + Bright.pct(b) + "%",
-                                    "Tự động: " + if (Bright.auto(ctx)) "BẬT" else "TẮT"), sel, tapItem, scroll) }
+                                Lines(listOf("Độ sáng " + Bright.bar(b) + " " + Bright.pct(b) + "%"), sel, tapItem, scroll) }
                             "battery" -> { val t = infoTick
                                 Lines(listOf("Pin: " + Batt.percent(ctx) + "%" + if (Batt.charging(ctx)) " (đang sạc)" else "",
                                     "Dùng hôm nay: " + fmtDur(UsageTracker.todayMs(ctx)),

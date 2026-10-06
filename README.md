@@ -8,7 +8,7 @@ Launcher thật mô phỏng điện thoại cục gạch Nokia: thân máy + bà
   - **Wifi:** quét và chọn mạng; mạng có khóa thì hiện hộp nhập mật khẩu với bàn phím ảo của máy. Android 10+ không cho app tự bật/tắt wifi nên bấm dòng "Wifi" sẽ mở bảng wifi của hệ thống; Android 11+ lưu mạng qua hộp thoại của hệ thống.
   - **SIM:** mỗi SIM hiện nhà mạng, loại mạng (2G/3G/4G/5G), số điện thoại (nếu nhà mạng có ghi trên SIM). "Gọi bằng" / "Nhắn tin bằng": chọn SIM mà app này dùng khi gọi từ Danh bạ/màn hình chờ và khi gửi tin. SIM dữ liệu và công tắc dữ liệu di động: Android không cho app đổi nên bấm sẽ mở màn hình của hệ thống.
   - **Chế độ máy bay, Chia sẻ dữ liệu (phát wifi):** Android không cho app thường tự bật/tắt, bấm sẽ mở đúng màn hình cài đặt của hệ thống.
-  - **Độ sáng:** ◀▶ chỉnh, OK tăng dần; cần cấp quyền "Sửa đổi cài đặt hệ thống". Có công tắc Tự động.
+  - **Độ sáng:** ◀▶ chỉnh, OK tăng dần; cần cấp quyền "Sửa đổi cài đặt hệ thống".
   - **Pin:** phần trăm pin, thời gian dùng app này trong ngày, nút mở trình tiết kiệm pin của hệ thống.
   - **Bộ nhớ:** tổng / trống / đã dùng của bộ nhớ trong. **Tài khoản:** hiện tài khoản Google (cần cấp quyền).
   - **Lịch bật tắt nguồn:** đặt giờ tắt / giờ bật lặp mỗi ngày. Android không cho app thường tắt/bật nguồn máy nên "tắt" = khóa và tắt màn hình (cần bật Trợ năng phonecuibap, Android 9+), "bật" = bật sáng màn hình.
