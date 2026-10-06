@@ -110,10 +110,11 @@ val KEYTXT = Color(0xFF1B2230)
 val MONO = FontFamily.Monospace
 
 val MENU = listOf(
-    "Nhật ký" to "calllog", "Ứng dụng" to "apps", "Danh bạ" to "contacts", "Tin nhắn" to "messages", "Nhạc" to "music",
+    "Nhật ký" to "calllog", "Danh bạ" to "contacts", "Tin nhắn" to "messages",
+    "Máy ảnh" to "camera", "Thư viện" to "gallery", "Nhạc" to "music",
     "Đồng hồ" to "clock", "Lịch" to "calendar", "Ghi âm" to "recorder",
-    "Máy tính" to "calc", "Máy ảnh" to "camera", "Thư viện" to "gallery",
-    "Rắn săn mồi" to "snake", "Zalo" to "zalo", "YouTube" to "youtube", "Cài đặt" to "settings"
+    "Máy tính" to "calc", "Rắn săn mồi" to "snake", "Zalo" to "zalo", "YouTube" to "youtube",
+    "Ứng dụng" to "apps", "Cài đặt" to "settings"
 )
 val LETTERS = mapOf("2" to "ABC", "3" to "DEF", "4" to "GHI", "5" to "JKL",
     "6" to "MNO", "7" to "PQRS", "8" to "TUV", "9" to "WXYZ", "*" to "+", "0" to "_", "#" to "⇧")
