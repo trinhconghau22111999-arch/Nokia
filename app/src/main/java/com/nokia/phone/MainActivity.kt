@@ -428,6 +428,7 @@ fun Phone() {
     var recPaused by remember { mutableStateOf(false) }
     var calls by remember { mutableStateOf(listOf<CallEntry>()) }       // Nhật ký cuộc gọi
     var clLoaded by remember { mutableStateOf(false) }
+    var ctLoaded by remember { mutableStateOf(false) }                  // danh bạ đã tải xong chưa
     var tracks by remember { mutableStateOf(listOf<Track>()) }          // Trình phát nhạc
     var mLoaded by remember { mutableStateOf(false) }
     var mCur by remember { mutableIntStateOf(-1) }                      // chỉ số bài đang phát (-1 = chưa phát)
@@ -459,7 +460,7 @@ fun Phone() {
         if (grp(p) == grp(screen)) return@LaunchedEffect
         when (grp(p)) {
             "apps" -> { apps = emptyList(); AppIcons.clear() }
-            "contacts" -> { contacts = emptyList(); cPick = -1 }
+            "contacts" -> { contacts = emptyList(); cPick = -1; ctLoaded = false }
             "sms" -> {
                 smsAll = emptyList(); threads = emptyList(); threadMsgs = emptyList()
                 contacts = emptyList(); cPick = -1
@@ -826,7 +827,7 @@ fun Phone() {
     fun inSms() = screen == "messages" || screen == "thread" || screen == "msgview" || screen == "compose"
     fun inRec() = screen == "recorder" || screen == "recConfirm" || screen == "recording"
     // Kết quả tải xong muộn mà đã rời màn hình thì bỏ đi, không giữ lại
-    fun loadContacts() { scope.launch { val c = withContext(Dispatchers.IO) { Contacts.load(ctx) }; if (screen == "contacts" || inSms()) contacts = c } }
+    fun loadContacts() { scope.launch { val c = withContext(Dispatchers.IO) { Contacts.load(ctx) }; if (screen == "contacts" || inSms()) contacts = c; if (screen == "contacts") ctLoaded = true } }
     fun loadRecs() { scope.launch { val r = withContext(Dispatchers.IO) { Rec.list(ctx) }; if (inRec()) recs = r } }
     fun loadSms(after: (() -> Unit)? = null) {
         scope.launch {
@@ -1351,7 +1352,7 @@ fun Phone() {
                                     color = INK, fontSize = 14.sp, fontFamily = MONO, textAlign = TextAlign.Center)
                             }
                             "contacts" -> if (contacts.isEmpty())
-                                Msg(if (granted(Manifest.permission.READ_CONTACTS)) "Danh bạ trống" else "Cần quyền Danh bạ")
+                                Msg(if (!granted(Manifest.permission.READ_CONTACTS)) "Cần quyền Danh bạ" else if (!ctLoaded) "Đang truy xuất danh bạ..." else "Danh bạ trống")
                                 else Lines(cLines, sel, tapItem, scroll)
                             "messages" -> Lines(listOf("+ Soạn tin mới") + threads.map {
                                 (if (it.last.sent) "→ " else "") + it.name + ": " + it.last.body.replace('\n', ' ')
