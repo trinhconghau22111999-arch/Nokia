@@ -216,7 +216,7 @@ object SmsRepo {
 // ---------------------------------------------------------------- Bộ gõ multi-tap
 
 private val MULTI = mapOf(
-    "1" to ".,?!'\"-()@/:_1", "2" to "abc2", "3" to "def3", "4" to "ghi4", "5" to "jkl5",
+    "1" to "1.,?!'\"-()@/:_", "2" to "abc2", "3" to "def3", "4" to "ghi4", "5" to "jkl5",
     "6" to "mno6", "7" to "pqrs7", "8" to "tuv8", "9" to "wxyz9", "0" to " 0"
 )
 

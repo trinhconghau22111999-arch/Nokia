@@ -171,7 +171,7 @@ class NokiaAccessibilityService : AccessibilityService() {
             lastKey = ""
         } else {                                  // chế độ chữ: bấm nhiều lần để đổi chữ
             val cycle = when (k) {
-                "1" -> ".,?!1"
+                "1" -> "1.,?!"
                 "0" -> " 0"
                 else -> (LETTERS[k] ?: k).lowercase() + k
             }
