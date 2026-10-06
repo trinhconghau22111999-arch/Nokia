@@ -1175,7 +1175,7 @@ fun Phone() {
                 "calllog" -> calls.getOrNull(sel)?.let { callNow(it.number) }
             }
             else -> when (screen) {
-                "home" -> if (dial.length < 11) dial += k      // tối đa 11 số
+                "home" -> if (dial.length < 12) dial += k      // tối đa 12 số
                 "apps" -> if (k == "#") appsMode = 1 - appsMode   // # đổi Chữ / Icon
                 "snake" -> when (k) {
                     "2" -> snake.turn(0 to -1); "8" -> snake.turn(0 to 1)
@@ -1270,7 +1270,7 @@ fun Phone() {
                                     Text(dateNow(), color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO,
                                         maxLines = 2, textAlign = TextAlign.Center)
                                 }
-                                Text(dial.takeLast(11), color = INK, fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 1, overflow = TextOverflow.Clip)
+                                Text(dial.takeLast(12), color = INK, fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 1, overflow = TextOverflow.Clip)
                             }
                             "menu" -> Lines(MENU.map { it.first }, sel, tapItem, scroll)
                             "apps" -> AppsScreen(apps, appsMode, sel, { appsMode = it }, tapItem, scroll)
