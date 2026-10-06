@@ -1,6 +1,17 @@
 package com.nokia.phone
 
 import android.Manifest
+import android.app.Activity
+import android.app.ActivityManager
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.media.AudioManager
+import android.media.RingtoneManager
+import android.os.SystemClock
+import androidx.compose.ui.graphics.Path
 import android.app.ActivityOptions
 import android.graphics.Rect
 import android.content.Intent
@@ -76,7 +87,7 @@ val MONO = FontFamily.Monospace
 
 val MENU = listOf(
     "Ứng dụng" to "apps", "Danh bạ" to "contacts", "Tin nhắn" to "messages",
-    "Đồng hồ" to "clock", "Rắn săn mồi" to "snake", "Cài đặt" to "settings"
+    "Đồng hồ" to "clock", "Lịch" to "calendar", "Rắn săn mồi" to "snake", "Cài đặt" to "settings"
 )
 val LETTERS = mapOf("2" to "ABC", "3" to "DEF", "4" to "GHI", "5" to "JKL",
     "6" to "MNO", "7" to "PQRS", "8" to "TUV", "9" to "WXYZ", "*" to "+", "0" to "_", "#" to "⇧")
@@ -148,6 +159,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         NokiaState.lcdResumed = true
+        Sound.applyPending(this)
         NokiaAccessibilityService.instance?.hideCursor()
         if (inSplit.value) ensureKeypad() else autoSplit()
     }
@@ -192,20 +204,27 @@ fun dateNow(): String = SimpleDateFormat("EEEE, dd/MM/yyyy", Locale.getDefault()
 
 fun timeNow(): String = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 
-/** Lịch tháng (tuần bắt đầu từ thứ 2). offset = số tháng lệch so với tháng hiện tại. */
+/** Lịch tháng (tuần bắt đầu từ thứ 2), mỗi ô có ngày dương và ngày âm bên dưới. offset = số tháng lệch so với tháng hiện tại. */
 @Composable
 fun MonthCalendar(offset: Int) {
-    val first = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); add(Calendar.MONTH, offset) }
+    val first = remember(offset) {
+        Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1); add(Calendar.MONTH, offset) }
+    }
     val today = Calendar.getInstance()
-    val sameMonth = first.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
-        first.get(Calendar.MONTH) == today.get(Calendar.MONTH)
+    val year = first.get(Calendar.YEAR)
+    val month = first.get(Calendar.MONTH) + 1
+    val sameMonth = year == today.get(Calendar.YEAR) && month == today.get(Calendar.MONTH) + 1
     val days = first.getActualMaximum(Calendar.DAY_OF_MONTH)
     val lead = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7
     val rows = (lead + days + 6) / 7
-    Column(Modifier.fillMaxWidth()) {
-        Text("◀  Tháng ${first.get(Calendar.MONTH) + 1}/${first.get(Calendar.YEAR)}  ▶",
+    val lunar = remember(offset) { (1..days).map { Lunar.fromSolar(it, month, year) } }
+    val footer = if (sameMonth) lunar[today.get(Calendar.DAY_OF_MONTH) - 1].let {
+        "Hôm nay âm lịch: ${it.day}/${it.month}${if (it.leap) " (nhuận)" else ""} năm ${Lunar.canChi(it.year)}"
+    } else "Năm ${Lunar.canChi(lunar[14].year)}"
+    Column(Modifier.fillMaxSize()) {
+        Text("◀  Tháng $month/$year  ▶",
             Modifier.fillMaxWidth().padding(vertical = 2.dp), textAlign = TextAlign.Center,
-            color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Row(Modifier.fillMaxWidth()) {
             listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN").forEach {
                 Text(it, Modifier.weight(1f), textAlign = TextAlign.Center, color = INK,
@@ -213,18 +232,87 @@ fun MonthCalendar(offset: Int) {
             }
         }
         for (r in 0 until rows) {
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().weight(1f)) {
                 for (c in 0 until 7) {
                     val d = r * 7 + c - lead + 1
                     val isToday = sameMonth && d == today.get(Calendar.DAY_OF_MONTH)
-                    Box(Modifier.weight(1f).height(26.dp).background(if (isToday) INK else Color.Transparent),
+                    val fg = if (isToday) LCD else INK
+                    Box(Modifier.weight(1f).fillMaxHeight().padding(1.dp)
+                        .background(if (isToday) INK else Color.Transparent),
                         contentAlignment = Alignment.Center) {
-                        if (d in 1..days) Text(d.toString(), color = if (isToday) LCD else INK,
-                            fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        if (d in 1..days) {
+                            val l = lunar[d - 1]
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(d.toString(), color = fg, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                                Text(if (l.day == 1) "1/${l.month}" else l.day.toString(), color = fg,
+                                    fontFamily = MONO, fontSize = 10.sp, maxLines = 1,
+                                    fontWeight = if (l.day == 1) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
                     }
                 }
             }
         }
+        Text(footer, Modifier.fillMaxWidth().padding(vertical = 3.dp), textAlign = TextAlign.Center,
+            color = INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
+    }
+}
+
+@Composable
+fun FieldBox(text: String, selected: Boolean, size: Int, onClick: () -> Unit) {
+    Text(text, Modifier.clickable(onClick = onClick)
+        .background(if (selected) INK else LCD).padding(horizontal = 10.dp, vertical = 4.dp),
+        color = if (selected) LCD else INK, fontFamily = MONO, fontWeight = FontWeight.Bold, fontSize = size.sp)
+}
+
+val VOL = listOf(
+    "Nhạc chuông" to AudioManager.STREAM_RING,
+    "Báo thức" to AudioManager.STREAM_ALARM,
+    "Phương tiện" to AudioManager.STREAM_MUSIC
+)
+
+fun volLine(ctx: Context, name: String, stream: Int): String {
+    val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    val max = maxOf(am.getStreamMaxVolume(stream), 1)
+    val cur = am.getStreamVolume(stream)
+    val f = Math.round(cur * 10f / max)
+    return name.padEnd(12) + "█".repeat(f) + "░".repeat(10 - f)
+}
+
+fun isBtOn(ctx: Context): Boolean = try {
+    ((ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter)?.isEnabled == true
+} catch (_: Exception) { false }
+
+/** Màn hình khóa mặc định: hình nền che toàn bộ khung hiển thị, bấm Menu rồi * để mở khóa. */
+@Composable
+fun LockScreen(time: String, date: String, armed: Boolean) {
+    Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { } }) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = size.width; val h = size.height
+            drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF8FD3F4), Color(0xFFDDF4E4))))
+            drawCircle(Color(0xFFFFE9A8), radius = w * 0.13f, center = Offset(w * 0.8f, h * 0.30f))
+            val far = Path().apply {
+                moveTo(0f, h * 0.74f)
+                quadraticBezierTo(w * 0.25f, h * 0.58f, w * 0.55f, h * 0.74f)
+                quadraticBezierTo(w * 0.8f, h * 0.86f, w, h * 0.70f)
+                lineTo(w, h); lineTo(0f, h); close()
+            }
+            drawPath(far, Color(0xFF7CCB93))
+            val near = Path().apply {
+                moveTo(0f, h * 0.86f)
+                quadraticBezierTo(w * 0.35f, h * 0.74f, w * 0.7f, h * 0.88f)
+                quadraticBezierTo(w * 0.88f, h * 0.94f, w, h * 0.84f)
+                lineTo(w, h); lineTo(0f, h); close()
+            }
+            drawPath(near, Color(0xFF3F9E63))
+        }
+        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(time, color = INK, fontSize = 80.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+            Text(date, color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 1)
+        }
+        Text(if (armed) "Bấm  *  để mở khóa" else "Bấm  Menu  rồi bấm  *",
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
+            color = INK, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
     }
 }
 
@@ -238,6 +326,18 @@ fun Phone() {
     var now by remember { mutableStateOf(timeNow()) }
     var apps by remember { mutableStateOf(listOf<AppInfo>()) }
     var monthOffset by remember { mutableIntStateOf(0) }
+    var alarms by remember { mutableStateOf(AlarmStore.load(ctx)) }
+    var locked by remember { mutableStateOf(true) }
+    var lockAt by remember { mutableLongStateOf(0L) }
+    var btOn by remember { mutableStateOf(false) }
+    var volTick by remember { mutableIntStateOf(0) }
+    var ringName by remember { mutableStateOf("") }
+    var alarmName by remember { mutableStateOf("") }
+    var editIdx by remember { mutableIntStateOf(0) }
+    var editField by remember { mutableIntStateOf(0) }
+    var eh by remember { mutableIntStateOf(7) }
+    var em by remember { mutableIntStateOf(0) }
+    var eon by remember { mutableStateOf(true) }
     var lcdRect by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val snake = remember { Snake() }
     val focus = remember { FocusRequester() }
@@ -245,6 +345,15 @@ fun Phone() {
 
     LaunchedEffect(Unit) { focus.requestFocus(); while (true) { now = timeNow(); delay(1000) } }
     LaunchedEffect(screen) { if (screen == "snake") while (true) { delay(170); snake.step() } }
+    LaunchedEffect(lockAt) { if (lockAt != 0L) { delay(4000); lockAt = 0L } }
+    LaunchedEffect(screen) { if (screen == "settings") while (true) { btOn = isBtOn(ctx); delay(600) } }
+    DisposableEffect(Unit) {
+        val r = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) { locked = true; lockAt = 0L }
+        }
+        ctx.registerReceiver(r, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        onDispose { try { ctx.unregisterReceiver(r) } catch (_: Exception) {} }
+    }
     val tick = homeTick.intValue
     LaunchedEffect(tick) { if (tick > 0) { screen = if (NokiaState.openMenu) "menu" else "home"; NokiaState.openMenu = false; sel = 0 } }
 
@@ -310,21 +419,147 @@ fun Phone() {
             .distinctBy { it.pkg }
             .sortedBy { it.label.lowercase() }
     }
-    fun open(s: String) { screen = s; sel = 0; monthOffset = 0; if (s == "snake") snake.reset(); if (s == "apps") loadApps() }
-    fun back() { when (screen) { "home" -> {}; "menu" -> open("home"); else -> open("menu") } }
+    fun refreshSoundNames() { ringName = Sound.ringtoneTitle(ctx); alarmName = Sound.alarmTitle(ctx) }
+
+    val ringPick = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) {
+            val uri = Sound.picked(r.data)
+            if (!Sound.setRingtone(ctx, uri)) {
+                Toast.makeText(ctx, "Hãy cấp quyền \"Sửa đổi cài đặt hệ thống\" cho Nokia Phone", Toast.LENGTH_LONG).show()
+                try {
+                    ctx.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:" + ctx.packageName))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (_: Exception) {}
+            }
+            refreshSoundNames()
+        }
+    }
+    val alarmPick = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) {
+            val uri = Sound.picked(r.data)
+            if (uri == Settings.System.DEFAULT_ALARM_ALERT_URI) AlarmStore.resetAlarmSound(ctx) else AlarmStore.setAlarmSound(ctx, uri)
+            refreshSoundNames()
+        }
+    }
+    val btPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        Toast.makeText(ctx, if (ok) "Đã cấp quyền, bấm lại để đổi Bluetooth" else "Cần quyền Bluetooth để bật/tắt", Toast.LENGTH_SHORT).show()
+    }
+    val btEnable = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { btOn = isBtOn(ctx) }
+
+    @Suppress("DEPRECATION")
+    fun toggleBt() {
+        val ad: BluetoothAdapter? = (ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+        if (ad == null) { Toast.makeText(ctx, "Máy không có Bluetooth", Toast.LENGTH_SHORT).show(); return }
+        if (Build.VERSION.SDK_INT >= 31 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            btPerm.launch(Manifest.permission.BLUETOOTH_CONNECT); return
+        }
+        try {
+            if (!ad.isEnabled) {
+                if (!(Build.VERSION.SDK_INT < 33 && ad.enable())) btEnable.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            } else if (!(Build.VERSION.SDK_INT < 33 && ad.disable())) {
+                Toast.makeText(ctx, "Android 13+ không cho app tự tắt Bluetooth, hãy gạt tắt trong màn hình này", Toast.LENGTH_LONG).show()
+                try { ctx.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            }
+        } catch (_: SecurityException) {}
+        btOn = isBtOn(ctx)
+    }
+
+    fun adjustVol(d: Int, wrap: Boolean = false) {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val st = VOL[sel.coerceIn(0, VOL.lastIndex)].second
+        val max = am.getStreamMaxVolume(st)
+        val cur = am.getStreamVolume(st)
+        val n = if (wrap && cur >= max) 0 else (cur + d).coerceIn(0, max)
+        try { am.setStreamVolume(st, n, AudioManager.FLAG_PLAY_SOUND) } catch (_: SecurityException) {
+            Toast.makeText(ctx, "Hãy tắt chế độ Không làm phiền để chỉnh âm lượng", Toast.LENGTH_SHORT).show()
+        }
+        volTick++
+    }
+
+    /** Khôi phục cài đặt gốc = xóa toàn bộ dữ liệu của riêng app này (báo thức, nhạc báo thức, quyền đã cấp). */
+    fun doReset() {
+        alarms = emptyList()
+        AlarmStore.schedule(ctx, emptyList())
+        val ok = try {
+            (ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).clearApplicationUserData()
+        } catch (_: Exception) { false }
+        if (!ok) {
+            ctx.getSharedPreferences("alarms", Context.MODE_PRIVATE).edit().clear().apply()
+            ctx.getSharedPreferences("sound", Context.MODE_PRIVATE).edit().clear().apply()
+            locked = true; lockAt = 0L; screen = "home"; sel = 0; dial = ""
+        }
+    }
+
+    val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    fun startEdit(i: Int) {
+        editIdx = i
+        val a = alarms.getOrNull(i) ?: Alarm(7, 0, true)
+        eh = a.h; em = a.m; eon = a.on; editField = 0
+        screen = "alarmEdit"
+    }
+    fun commitAlarms(list: List<Alarm>) {
+        alarms = list
+        AlarmStore.save(ctx, list)
+        AlarmStore.schedule(ctx, list)
+        screen = "clock"
+        sel = editIdx.coerceIn(0, list.size)
+    }
+    fun saveAlarm() {
+        val l = alarms.toMutableList()
+        val a = Alarm(eh, em, eon)
+        if (editIdx < l.size) l[editIdx] = a else l.add(a)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+        commitAlarms(l)
+    }
+    fun deleteAlarm() {
+        val l = alarms.toMutableList()
+        if (editIdx in l.indices) l.removeAt(editIdx)
+        commitAlarms(l)
+    }
+    fun editMove(k: String) {
+        val fields = if (editIdx < alarms.size) 4 else 3
+        when (k) {
+            "LEFT" -> editField = (editField - 1 + fields) % fields
+            "RIGHT" -> editField = (editField + 1) % fields
+            else -> {
+                val d = if (k == "UP") 1 else -1
+                when (editField) {
+                    0 -> eh = (eh + d + 24) % 24
+                    1 -> em = (em + d + 60) % 60
+                    2 -> eon = !eon
+                }
+            }
+        }
+    }
+    fun open(s: String) { screen = s; sel = 0; monthOffset = 0; if (s == "snake") snake.reset(); if (s == "apps") loadApps(); if (s == "sound") refreshSoundNames() }
+    fun back() { when (screen) { "home" -> {}; "menu" -> open("home"); "alarmEdit" -> screen = "clock"; "sound", "reset" -> open("settings"); "volume" -> open("sound"); else -> open("menu") } }
 
     fun press(k: String) {
         if (buzz) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 6; else -> 1 }
+        if (locked) {   // Menu rồi * để mở khóa
+            val t = SystemClock.uptimeMillis()
+            if (k == "SOFTL") lockAt = t
+            else if (k == "*" && lockAt != 0L && t - lockAt < 4000) { locked = false; lockAt = 0L }
+            else lockAt = 0L
+            return
+        }
+        val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> 4; "sound", "volume" -> 3; "clock" -> alarms.size + 1; else -> 1 }
         when (k) {
             "UP", "LEFT" -> when (screen) {
                 "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
-                "clock" -> monthOffset--
+                "calendar" -> monthOffset--
+                "volume" -> if (k == "LEFT") adjustVol(-1) else sel = (sel - 1 + size) % size
+                "alarmEdit" -> editMove(k)
                 else -> sel = (sel - 1 + size) % size
             }
             "DOWN", "RIGHT" -> when (screen) {
                 "snake" -> snake.turn(if (k == "DOWN") 0 to 1 else 1 to 0)
-                "clock" -> monthOffset++
+                "calendar" -> monthOffset++
+                "volume" -> if (k == "RIGHT") adjustVol(1) else sel = (sel + 1) % size
+                "alarmEdit" -> editMove(k)
                 else -> sel = (sel + 1) % size
             }
             "OK", "SOFTL" -> when (screen) {
@@ -338,14 +573,22 @@ fun Phone() {
                     ctx.packageManager.getLaunchIntentForPackage(a.pkg)?.let { launch(it) }
                 }
                 "settings" -> when (sel) {
-                    0 -> buzz = !buzz
-                    1 -> launch(Intent(Settings.ACTION_HOME_SETTINGS))
-                    2 -> launch(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS), false)
-                    3 -> showDiag()
-                    4 -> launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), false)
-                    else -> toggleSplit()
+                    0 -> launch(Intent(Settings.ACTION_HOME_SETTINGS))
+                    1 -> open("sound")
+                    2 -> toggleBt()
+                    else -> open("reset")
                 }
+                "sound" -> when (sel) {
+                    0 -> ringPick.launch(Sound.pickerIntent(ctx, RingtoneManager.TYPE_RINGTONE))
+                    1 -> open("volume")
+                    else -> alarmPick.launch(Sound.pickerIntent(ctx, RingtoneManager.TYPE_ALARM))
+                }
+                "volume" -> adjustVol(1, true)
+                "reset" -> doReset()
                 "snake" -> if (snake.dead) snake.reset()
+                "clock" -> startEdit(sel)
+                "calendar" -> monthOffset = 0
+                "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) deleteAlarm() else saveAlarm()
             }
             "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) } else back()
             "END" -> if (screen == "home") dial = "" else open("home")
@@ -368,13 +611,16 @@ fun Phone() {
     val scroll: (Int) -> Unit = { d -> press(if (d > 0) "DOWN" else "UP") }
 
     SideEffect { NokiaState.listener = { k -> press(k) } }
-    BackHandler { back() }
+    BackHandler { if (!locked) back() }
 
     val left = when (screen) {
-        "home" -> "Menu"; "menu", "apps" -> "Chọn"; "settings" -> "Đổi"
-        "snake" -> if (snake.dead) "Chơi lại" else ""; else -> ""
+        "home" -> "Menu"; "menu", "apps" -> "Chọn"; "settings", "sound" -> "Chọn"; "reset" -> "Có"
+        "snake" -> if (snake.dead) "Chơi lại" else ""
+        "clock" -> "Sửa"; "calendar" -> "Hôm nay"
+        "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) "Xóa" else "Lưu"
+        else -> ""
     }
-    val right = when (screen) { "home" -> if (dial.isEmpty()) "" else "Xóa"; else -> "Về" }
+    val right = when (screen) { "home" -> if (dial.isEmpty()) "" else "Xóa"; "reset" -> "Không"; else -> "Về" }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // Tỉ lệ gốc của màn hình điện thoại thật -> làm chuẩn cho màn hình LCD nhỏ
@@ -417,12 +663,41 @@ fun Phone() {
                             }
                             "menu" -> Lines(MENU.map { it.first }, sel, tapItem, scroll)
                             "apps" -> Lines(apps.map { it.label }.ifEmpty { listOf("(trống)") }, sel, tapItem, scroll)
-                            "clock" -> Column(Modifier.fillMaxSize(), Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
-                                Text(now, color = INK, fontSize = 44.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                            "clock" -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(now, Modifier.padding(top = 16.dp), color = INK, fontSize = 52.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
                                 Text(dateNow(), color = INK, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
-                                MonthCalendar(monthOffset)
+                                Spacer(Modifier.height(14.dp))
+                                Text("BÁO THỨC", Modifier.fillMaxWidth().background(INK).padding(horizontal = 6.dp, vertical = 2.dp),
+                                    color = LCD, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                Box(Modifier.weight(1f).fillMaxWidth()) {
+                                    Lines(alarms.map { "%02d:%02d   %s".format(it.h, it.m, if (it.on) "BẬT" else "TẮT") } + "+ Thêm báo thức",
+                                        sel, tapItem, scroll)
+                                }
                             }
-                            "settings" -> Lines(listOf("Rung phím: " + if (buzz) "Bật" else "Tắt", "Chọn launcher", "Cửa sổ nhỏ (dev)", "Thông tin máy", "Bật Trợ năng", "Chia đôi màn hình"), sel, tapItem, scroll)
+                            "alarmEdit" -> Column(Modifier.fillMaxSize(), Arrangement.SpaceEvenly, Alignment.CenterHorizontally) {
+                                Text(if (editIdx < alarms.size) "Sửa báo thức" else "Báo thức mới",
+                                    color = INK, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    FieldBox("%02d".format(eh), editField == 0, 56) { if (editField == 0) editMove("UP") else editField = 0 }
+                                    Text(":", color = INK, fontSize = 56.sp, fontWeight = FontWeight.Bold, fontFamily = MONO)
+                                    FieldBox("%02d".format(em), editField == 1, 56) { if (editField == 1) editMove("UP") else editField = 1 }
+                                }
+                                FieldBox(if (eon) "Báo thức: BẬT" else "Báo thức: TẮT", editField == 2, 18) { if (editField == 2) editMove("UP") else editField = 2 }
+                                if (editIdx < alarms.size) FieldBox("Xóa báo thức", editField == 3, 18) { if (editField == 3) deleteAlarm() else editField = 3 }
+                                Text("◀ ▶ chọn ô    ▲ ▼ đổi giá trị", color = INK, fontSize = 12.sp, fontFamily = MONO)
+                            }
+                            "calendar" -> MonthCalendar(monthOffset)
+                            "settings" -> Lines(listOf("Chọn launcher", "Cài đặt âm thanh",
+                                "Bluetooth: " + if (btOn) "BẬT" else "TẮT", "Khôi phục cài đặt gốc"), sel, tapItem, scroll)
+                            "sound" -> Lines(listOf("Nhạc chuông: $ringName", "Âm lượng", "Nhạc báo thức: $alarmName"), sel, tapItem, scroll)
+                            "volume" -> Lines(VOL.map { (n, st) -> volTick.let { volLine(ctx, n, st) } }, sel, tapItem, scroll)
+                            "reset" -> Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+                                Text("Khôi phục cài đặt gốc?", color = INK, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                                    fontFamily = MONO, textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(10.dp))
+                                Text("Xóa toàn bộ dữ liệu của riêng app Nokia Phone (báo thức, nhạc báo thức, quyền đã cấp). Máy của bạn không bị ảnh hưởng.",
+                                    color = INK, fontSize = 14.sp, fontFamily = MONO, textAlign = TextAlign.Center)
+                            }
                             "snake" -> Column(Modifier.fillMaxSize()) {
                                 Text(if (snake.dead) "Thua! Điểm: ${snake.score}" else "Điểm: ${snake.score}",
                                     color = INK, fontFamily = MONO, fontSize = 12.sp)
@@ -455,6 +730,7 @@ fun Phone() {
                         }
                     }
                 }
+                if (locked) LockScreen(now.take(5), dateNow(), lockAt != 0L)
             }
             }
 
