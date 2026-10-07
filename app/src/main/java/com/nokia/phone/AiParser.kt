@@ -48,7 +48,7 @@ object AiParser {
     private val SMS_NEXT = setOf("tin", "cho", "toi", "den", "sms")
     private val SMS_SKIP1 = setOf("tin", "nhan", "sms", "loi", "van", "ban")
     private val SMS_SKIP2 = setOf("cho", "toi", "den", "qua", "so", "dien", "thoai")
-    private val CALL_SKIP = setOf("thoai", "lai", "cho", "toi", "den", "so", "cua", "may", "dt")
+    private val CALL_SKIP = setOf("thoai", "lai", "cho", "toi", "den", "so", "cua", "may", "dt", "vao", "qua", "sdt")
     private val CALL_TAIL = setOf("di", "nhe", "nha", "giup", "minh", "toi", "ngay", "luon", "voi", "gium", "a", "ha", "nhanh", "dum", "cho")
     private val MUSIC_VERB = setOf("phat", "nghe", "bat", "mo", "choi")
     private val MUSIC_SKIP = setOf("nhac", "bai", "hat", "ca", "khuc", "cua", "ten", "la", "nghe", "di", "nhe", "giup", "toi", "minh", "cho")
@@ -168,7 +168,16 @@ object AiParser {
             var e = n.size
             while (e > i && n[e - 1] in CALL_TAIL) e--
             if (e <= i) return AiCmd.Unknown(text)
-            return AiCmd.Call(words.subList(i, e).joinToString(" "), spokenNumber(n.subList(i, e)))
+            var number = spokenNumber(n.subList(i, e))
+            var start = i
+            if (number.isEmpty()) {
+                // Còn sót từ thừa trước số ("gọi tới số máy bàn 094...") -> lấy đoạn cuối đọc được thành số
+                for (s in i + 1 until e) {
+                    val num = spokenNumber(n.subList(s, e))
+                    if (num.count { it.isDigit() } >= 6) { number = num; start = s; break }
+                }
+            }
+            return AiCmd.Call(words.subList(start, e).joinToString(" "), number)
         }
 
         // ---- Báo thức
