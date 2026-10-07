@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -102,6 +103,15 @@ class VoiceInput(private val ctx: Context) {
         try { r.destroy() } catch (_: Throwable) {}
     }
 }
+
+/**
+ * Intent mở YouTube và tìm sẵn từ khóa. YouTube chính thức: mở thẳng trang kết quả tìm kiếm.
+ * App "Tube for me": mở app kèm extra "search_query" (app đó đọc extra này và tìm). null = app chưa cài.
+ */
+fun youtubeSearchIntent(ctx: Context, pkg: String, q: String): Intent? =
+    if (pkg == "com.google.android.youtube")
+        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q))).setPackage(pkg)
+    else ctx.packageManager.getLaunchIntentForPackage(pkg)?.putExtra("search_query", q)
 
 fun aiErrorText(code: Int): String = when (code) {
     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Không nghe thấy gì.\nBấm Nói để thử lại."

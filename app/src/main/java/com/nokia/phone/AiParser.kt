@@ -19,6 +19,8 @@ sealed class AiCmd {
     /** id màn hình trong app: calllog, contacts, messages, music, clock, calendar, recorder, calc, snake, zalo, youtube, settings, wifi, apps, home */
     data class Open(val id: String) : AiCmd()
     data class OpenApp(val name: String) : AiCmd()
+    /** Mở YouTube và tìm / phát bài này (query giữ nguyên dấu để gõ vào ô tìm). */
+    data class YouTube(val query: String) : AiCmd()
     data class Volume(val up: Boolean) : AiCmd()
     data class Torch(val on: Boolean) : AiCmd()
     data class Bluetooth(val on: Boolean) : AiCmd()
@@ -181,6 +183,11 @@ object AiParser {
             return AiCmd.Camera(selfie, shoot)
         }
 
+        // ---- YouTube kèm tên bài / từ khóa: "mở YouTube mở bài Liễu Thanh Yên" -> tìm trên YouTube (không phải nhạc trong máy)
+        val yt = n.indexOfFirst { it == "youtube" || it == "dutup" || it == "yutup" || it == "utube" || it == "yotube" }
+            .let { if (it >= 0) it else seqIndex(n, listOf("you", "tube")) }
+        if (yt >= 0) parseYoutube(words, n, yt)?.let { return it }
+
         // ---- Phát nhạc
         val musicWord = n.indexOfFirst { it == "nhac" || it == "bai" || it == "khuc" || it == "hat" }
         val verbIdx = n.indexOfFirst { it in MUSIC_VERB }
@@ -230,6 +237,33 @@ object AiParser {
         if (has("ung dung")) return AiCmd.Open("apps")
         if (has("man hinh chinh", "trang chu", "ve nha", "man hinh cho")) return AiCmd.Open("home")
         return AiCmd.Unknown(text)
+    }
+
+    private val YT_SKIP = setOf("mo", "phat", "nghe", "bat", "tim", "kiem", "vao", "xem", "bai", "nhac", "khuc", "video",
+        "clip", "cua", "ten", "di", "nhe", "giup", "len", "tren")
+    private val YT_TAIL = setOf("di", "nhe", "nha", "giup", "len", "ngay", "luon", "voi", "a", "tren", "o")
+
+    /** Từ khóa tìm kiếm trên YouTube, ưu tiên phần SAU chữ YouTube; không có thì lấy phần trước ("mở bài X trên YouTube"). */
+    private fun parseYoutube(words: List<String>, n: List<String>, yt: Int): AiCmd? {
+        val ytLen = if (n[yt] == "you") 2 else 1
+        fun span(from: Int, to: Int): Pair<Int, Int> {
+            var i = from
+            while (i < to) {
+                val two = if (i + 1 < to) n[i] + " " + n[i + 1] else ""
+                i += when {
+                    two == "bai hat" || two == "ca khuc" || two == "cho toi" || two == "tim kiem" -> 2
+                    n[i] in YT_SKIP -> 1
+                    else -> break
+                }
+            }
+            var e = to
+            while (e > i && n[e - 1] in YT_TAIL) e--
+            return i to e
+        }
+        var (a, b) = span(yt + ytLen, n.size)
+        if (b <= a) { val r = span(0, yt); a = r.first; b = r.second }
+        if (b <= a) return null     // chỉ nói "mở YouTube" -> mở app như thường
+        return AiCmd.YouTube(words.subList(a, b).joinToString(" "))
     }
 
     private fun parseSms(text: String, words: List<String>, n: List<String>, at: Int): AiCmd {

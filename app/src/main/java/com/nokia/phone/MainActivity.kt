@@ -1244,6 +1244,12 @@ fun Phone() {
                 if (idx.isEmpty()) aiMsg = "Không thấy ứng dụng \"${c.name}\""
                 else { val a = list[idx[0]]; aiMsg = "Đang mở ${a.label}"; launchPkg(a.pkg, a.label) }
             }
+            is AiCmd.YouTube -> {
+                val (pkg, label) = YouTubeApp.pick(ctx)
+                val i = youtubeSearchIntent(ctx, pkg, c.query)
+                if (i == null) launchPkg(pkg, label)
+                else { aiMsg = "Đang tìm \"${c.query}\"\ntrên $label"; launch(i) }
+            }
             is AiCmd.Volume -> {
                 adjustMusicVol(if (c.up) 1 else -1); adjustMusicVol(if (c.up) 1 else -1)
                 aiMsg = if (c.up) "Đã tăng âm lượng" else "Đã giảm âm lượng"
