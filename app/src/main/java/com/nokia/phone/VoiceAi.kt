@@ -108,21 +108,6 @@ object Torch {
     } catch (_: Throwable) { false }
 }
 
-val AI_TIPS = listOf(
-    "Gọi cho mẹ / gọi 0912345678",
-    "Nhắn tin cho Nam nội dung tối nay họp",
-    "Chụp ảnh / chụp ảnh tự sướng",
-    "Mở thư viện / mở máy ảnh",
-    "Mở bài Hãy trao cho anh",
-    "Phát nhạc của Sơn Tùng",
-    "Đặt báo thức 6 giờ 30",
-    "Đặt báo thức sau 20 phút",
-    "Mở Zalo / mở YouTube / mở Facebook",
-    "Mở danh bạ / tin nhắn / lịch",
-    "Bật đèn pin / tăng âm lượng",
-    "Bây giờ là mấy giờ?"
-)
-
 /**
  * Màn hình AI trên LCD.
  * state: 0 = rảnh, 1 = đang nghe, 3 = chờ xác nhận (gọi / nhắn), 4 = hiện kết quả / lỗi.
@@ -176,8 +161,8 @@ fun AiScreen(
                     Text("OK / Nói: ra lệnh tiếp", Modifier.fillMaxWidth(), color = INK, fontSize = 12.sp,
                         fontFamily = MONO, textAlign = TextAlign.Center)
                 } else {
-                    Text("Bấm OK rồi nói, ví dụ:", color = INK, fontSize = 13.sp, fontFamily = MONO, fontWeight = FontWeight.Bold)
-                    AI_TIPS.forEach { Text("• $it", color = INK, fontSize = 12.sp, fontFamily = MONO) }
+                    Text("Bấm OK rồi nói", Modifier.fillMaxWidth().padding(top = 24.dp), color = INK, fontSize = 18.sp,
+                        fontFamily = MONO, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                 }
             }
         }
