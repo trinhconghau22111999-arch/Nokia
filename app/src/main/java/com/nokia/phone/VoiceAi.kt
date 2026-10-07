@@ -5,6 +5,8 @@ import android.content.Intent
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -31,8 +33,14 @@ import androidx.compose.ui.unit.sp
  * Nhận dạng giọng nói tiếng Việt bằng SpeechRecognizer của Android (dịch vụ Google trên máy, cần mạng).
  * Mọi hàm phải gọi trên luồng chính; các callback cũng chạy trên luồng chính.
  */
+const val SILENCE_MS = 2000L
+
 class VoiceInput(private val ctx: Context) {
     private var rec: SpeechRecognizer? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val silenceStop = Runnable { stop() }          // im lặng đủ lâu -> chốt luôn, không chờ bộ nhận dạng
+    private fun armSilence() { handler.removeCallbacks(silenceStop); handler.postDelayed(silenceStop, SILENCE_MS) }
+    private fun disarmSilence() { handler.removeCallbacks(silenceStop) }
 
     fun available(): Boolean = try { SpeechRecognizer.isRecognitionAvailable(ctx) } catch (_: Throwable) { false }
 
@@ -49,17 +57,21 @@ class VoiceInput(private val ctx: Context) {
         val fail = onError   // đặt tên khác để không lẫn với RecognitionListener.onError bên dưới
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
+            override fun onBeginningOfSpeech() { armSilence() }
             override fun onRmsChanged(rmsdB: Float) { onLevel(rmsdB) }
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
-            override fun onError(error: Int) { fail(error) }
+            override fun onError(error: Int) { disarmSilence(); fail(error) }
             override fun onResults(results: Bundle?) {
+                disarmSilence()
                 val l = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                 onResult(l)
             }
             override fun onPartialResults(partialResults: Bundle?) {
-                partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let(onPartial)
+                partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let {
+                    onPartial(it)
+                    armSilence()       // còn đang nói (chữ vẫn thay đổi) -> đếm lại 2 giây
+                }
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
@@ -69,6 +81,9 @@ class VoiceInput(private val ctx: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "vi-VN")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            // Gợi ý cho bộ nhận dạng: im lặng 2 giây là xong (một số máy bỏ qua gợi ý này, đã có bộ đếm riêng ở trên)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, SILENCE_MS)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, SILENCE_MS)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
         }
         try { r.startListening(i) } catch (_: Throwable) { onError(SpeechRecognizer.ERROR_CLIENT) }
@@ -79,6 +94,7 @@ class VoiceInput(private val ctx: Context) {
 
     /** Hủy hẳn, không trả kết quả. */
     fun cancel() {
+        disarmSilence()
         val r = rec ?: return
         rec = null
         try { r.setRecognitionListener(null) } catch (_: Throwable) {}
