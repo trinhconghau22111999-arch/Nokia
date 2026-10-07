@@ -489,6 +489,19 @@ fun Phone() {
     var mCur by remember { mutableIntStateOf(-1) }                      // chỉ số bài đang phát (-1 = chưa phát)
     var mTick by remember { mutableIntStateOf(0) }
     var fromHome by remember { mutableStateOf(false) }                  // app mở bằng phím mũi tên từ màn hình chờ -> Về = màn hình chờ
+    // ---- AI giọng nói: 0 rảnh, 1 đang nghe, 3 chờ xác nhận, 4 hiện kết quả / lỗi
+    var aiState by remember { mutableIntStateOf(0) }
+    var aiHeard by remember { mutableStateOf("") }
+    var aiMsg by remember { mutableStateOf("") }
+    var aiLevel by remember { mutableFloatStateOf(0f) }
+    var aiKind by remember { mutableIntStateOf(1) }                    // 1 gọi, 2 gửi tin, 3 soạn tin
+    var aiBody by remember { mutableStateOf("") }
+    var aiCands by remember { mutableStateOf(listOf<Contact>()) }      // người khớp tên (hoặc số đọc ra)
+    var aiPick by remember { mutableIntStateOf(0) }
+    var aiStartTick by remember { mutableIntStateOf(0) }               // tăng khi vào màn hình AI -> tự bắt đầu nghe
+    var aiMusicQ by remember { mutableStateOf<String?>(null) }         // bài nhạc chờ phát sau khi danh sách nhạc tải xong ("" = bất kỳ)
+    var aiShoot by remember { mutableStateOf(false) }                  // tự chụp sau khi mở máy ảnh bằng giọng nói
+    val voice = remember { VoiceInput(ctx) }
     var permThen by remember { mutableStateOf<(() -> Unit)?>(null) }
     var permMust by remember { mutableStateOf(listOf<String>()) }
     // Ô tìm kiếm của Danh bạ (dùng chung bộ gõ multi-tap với soạn tin; chỉ tính khi đang ở màn hình Danh bạ)
@@ -1081,12 +1094,6 @@ fun Phone() {
     }
 
     // ---- Trình phát nhạc ----
-    fun loadTracks() {
-        scope.launch {
-            val l = withContext(Dispatchers.IO) { MusicLib.load(ctx) }
-            if (screen == "music") { tracks = l; mLoaded = true }
-        }
-    }
     /** Phát bài thứ i; hết bài thì tự sang bài kế (hết danh sách thì dừng). */
     fun playTrack(i: Int) {
         val t = tracks.getOrNull(i) ?: return
@@ -1095,6 +1102,23 @@ fun Phone() {
             onEnd = { if (i + 1 < tracks.size) playTrack(i + 1) },
             onError = { mCur = -1; Toast.makeText(ctx, "Không phát được bài này", Toast.LENGTH_SHORT).show() })
         if (!ok) { mCur = -1; Toast.makeText(ctx, "Không phát được bài này", Toast.LENGTH_SHORT).show() }
+    }
+    fun loadTracks() {
+        scope.launch {
+            val l = withContext(Dispatchers.IO) { MusicLib.load(ctx) }
+            if (screen == "music") {
+                tracks = l; mLoaded = true
+                // Lệnh giọng nói "mở bài ...": tải xong danh sách thì tìm và phát luôn
+                aiMusicQ?.let { q ->
+                    aiMusicQ = null
+                    val i = if (l.isEmpty()) -1
+                        else if (q.isEmpty()) l.indices.random()
+                        else (AiMatch.rank(l.map { plain(it.title + " " + it.artist) }, q).firstOrNull() ?: -1)
+                    if (i >= 0) playTrack(i)
+                    else Toast.makeText(ctx, "Không thấy bài \"$q\" trong máy", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
     /** ◀ ▶: bài trước / bài sau. */
     fun musicStep(d: Int) {
@@ -1112,8 +1136,11 @@ fun Phone() {
 
     fun gridMove(d: Int) { if (apps.isNotEmpty()) sel = (sel + d).coerceIn(0, apps.lastIndex) }
     fun open(s: String) {
+        if (s != "music") aiMusicQ = null
+        if (s != "camera") aiShoot = false
         screen = s; sel = 0; monthOffset = 0
         when (s) {
+            "ai" -> { aiState = 0; aiHeard = ""; aiMsg = ""; aiStartTick++ }
             "snake" -> snake.reset()
             "apps" -> loadApps()
             "sound" -> refreshSoundNames()
@@ -1167,6 +1194,156 @@ fun Phone() {
         }
     }
 
+    // ======================= AI điều khiển bằng giọng nói =======================
+    fun aiOpen(id: String) {
+        when (id) {
+            "zalo" -> launchPkg("com.zing.zalo", "Zalo")
+            "youtube" -> YouTubeApp.pick(ctx).let { (pkg, label) -> launchPkg(pkg, label) }
+            else -> open(id)
+        }
+    }
+    /** Tìm người (hoặc dùng luôn số đọc ra) rồi sang bước xác nhận. kind: 1 gọi, 2 gửi tin, 3 soạn tin. */
+    fun aiPrepare(target: String, number: String, kind: Int, body: String) {
+        aiKind = kind; aiBody = body
+        if (number.isNotEmpty()) {
+            aiCands = listOf(Contact(number, number, number)); aiPick = 0; aiState = 3
+            return
+        }
+        aiState = 4; aiMsg = "Cần quyền Danh bạ để tìm người"
+        need(listOf(Manifest.permission.READ_CONTACTS)) {
+            aiMsg = "Đang tìm \"$target\"..."
+            scope.launch {
+                val all = withContext(Dispatchers.IO) { Contacts.load(ctx) }
+                val idx = AiMatch.rank(all.map { it.key }, target)
+                if (idx.isEmpty()) { aiState = 4; aiMsg = "Không thấy \"$target\"\ntrong danh bạ" }
+                else { aiCands = idx.take(8).map { all[it] }; aiPick = 0; aiState = 3 }
+            }
+        }
+    }
+    fun aiExec(c: AiCmd) {
+        aiState = 4; aiMsg = ""
+        when (c) {
+            is AiCmd.Call -> aiPrepare(c.target, c.number, 1, "")
+            is AiCmd.Sms -> aiPrepare(c.target, c.number, if (c.body.isEmpty()) 3 else 2, c.body)
+            is AiCmd.Camera -> {
+                aiShoot = c.shoot
+                open("camera")
+                if (c.selfie) camFront = true
+                if (c.shoot) Toast.makeText(ctx, "Chụp sau 3 giây...", Toast.LENGTH_SHORT).show()
+            }
+            is AiCmd.Gallery -> open("gallery")
+            is AiCmd.Music -> { aiMusicQ = c.query; open("music") }
+            is AiCmd.Open -> { aiMsg = "Đang mở..."; aiOpen(c.id) }
+            is AiCmd.OpenApp -> {
+                val pm = ctx.packageManager
+                val list = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
+                    .map { AppInfo(it.loadLabel(pm).toString(), it.activityInfo.packageName) }
+                    .filter { it.pkg != ctx.packageName }
+                    .distinctBy { it.pkg }
+                val idx = AiMatch.rank(list.map { plain(it.label) }, c.name)
+                if (idx.isEmpty()) aiMsg = "Không thấy ứng dụng \"${c.name}\""
+                else { val a = list[idx[0]]; aiMsg = "Đang mở ${a.label}"; launchPkg(a.pkg, a.label) }
+            }
+            is AiCmd.Volume -> {
+                adjustMusicVol(if (c.up) 1 else -1); adjustMusicVol(if (c.up) 1 else -1)
+                aiMsg = if (c.up) "Đã tăng âm lượng" else "Đã giảm âm lượng"
+            }
+            is AiCmd.Torch -> aiMsg = if (Torch.set(ctx, c.on)) (if (c.on) "Đã bật đèn pin" else "Đã tắt đèn pin")
+                else "Không bật được đèn pin\n(máy không có flash hoặc camera đang bận)"
+            is AiCmd.Bluetooth -> {
+                if (isBtOn(ctx) == c.on) aiMsg = "Bluetooth đã " + (if (c.on) "bật" else "tắt") + " rồi"
+                else { toggleBt(); aiMsg = "Đang " + (if (c.on) "bật" else "tắt") + " Bluetooth" }
+            }
+            is AiCmd.SetAlarm -> {
+                if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS))
+                    notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+                val l = alarms + Alarm(c.h, c.m, true)
+                alarms = l
+                AlarmStore.save(ctx, l)
+                AlarmStore.schedule(ctx, l)
+                val min = ((AlarmStore.nextTrigger(c.h, c.m) - System.currentTimeMillis() + 59_999L) / 60_000L).toInt()
+                aiMsg = "Đã đặt báo thức %02d:%02d\n(sau %s%d phút)".format(c.h, c.m, if (min >= 60) "${min / 60} giờ " else "", min % 60)
+                if (Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)) askIgnoreBatteryOnce(ctx)
+            }
+            is AiCmd.Lock -> { open("home"); locked = true; lockAt = 0L }
+            is AiCmd.Time -> { val cal = Calendar.getInstance(); aiMsg = "Bây giờ là ${cal.get(Calendar.HOUR_OF_DAY)} giờ ${cal.get(Calendar.MINUTE)} phút" }
+            is AiCmd.Date -> aiMsg = "Hôm nay là\n" + dateNow()
+            is AiCmd.Help -> aiMsg = ""     // hiện lại danh sách câu ví dụ
+            is AiCmd.Cancel -> aiMsg = "Đã hủy"
+            is AiCmd.Unknown -> aiMsg = "Chưa hiểu lệnh này.\nHãy nói rõ hơn, ví dụ:\n\"gọi cho mẹ\""
+        }
+    }
+    fun aiHandle(list: List<String>) {
+        val heard = list.filter { it.isNotBlank() }
+        if (heard.isEmpty()) { aiState = 4; aiMsg = "Không nghe rõ.\nBấm Nói để thử lại."; return }
+        // Thử lần lượt các cách nghe của bộ nhận dạng, lấy cách đầu tiên hiểu được
+        val parsed = heard.map { it to AiParser.parse(it) }
+        val best = parsed.firstOrNull { it.second !is AiCmd.Unknown } ?: parsed.first()
+        aiHeard = best.first
+        aiExec(best.second)
+    }
+    fun aiListen() {
+        if (!voice.available()) {
+            aiState = 4; aiMsg = "Máy chưa có dịch vụ nhận dạng giọng nói\n(cần app Google)"
+            return
+        }
+        aiState = 4; aiMsg = "Cần quyền Micro để nghe"
+        need(listOf(Manifest.permission.RECORD_AUDIO)) {
+            aiState = 1; aiHeard = ""; aiMsg = ""; aiLevel = 0f
+            voice.start(
+                onPartial = { aiHeard = it },
+                onLevel = { aiLevel = it },
+                onResult = { list -> if (aiState == 1) aiHandle(list) },
+                onError = { code -> if (aiState == 1) { aiState = 4; aiMsg = aiErrorText(code) } }
+            )
+        }
+    }
+    fun aiConfirm() {
+        val p = aiCands.getOrNull(aiPick) ?: return
+        when (aiKind) {
+            1 -> { aiState = 4; aiMsg = "Đang gọi ${p.name}..."; callNow(p.number) }
+            2 -> need(listOf(Manifest.permission.SEND_SMS)) {
+                val ok = SmsRepo.send(ctx, p.number, aiBody)
+                aiState = 4
+                aiMsg = if (ok) "Đã gửi tin cho ${p.name}" else "Gửi tin không được"
+            }
+            else -> startCompose(p.number, p.name, "new")
+        }
+    }
+    fun aiPress(k: String) {
+        when (aiState) {
+            1 -> when (k) {
+                "OK", "SOFTL" -> voice.stop()                                   // nói xong sớm
+                "SOFTR" -> { aiState = 0; aiMsg = ""; aiHeard = ""; voice.cancel() }
+                "END" -> { aiState = 0; voice.cancel(); open("home") }
+            }
+            3 -> when (k) {
+                "OK", "SOFTL" -> aiConfirm()
+                "CALL" -> if (aiKind == 1) aiConfirm()
+                "UP", "LEFT" -> aiPick = maxOf(aiPick - 1, 0)
+                "DOWN", "RIGHT" -> aiPick = minOf(aiPick + 1, maxOf(aiCands.lastIndex, 0))
+                "SOFTR" -> { aiState = 4; aiMsg = "Đã hủy" }
+                "END" -> open("home")
+            }
+            else -> when (k) {
+                "OK", "SOFTL" -> aiListen()
+                "SOFTR" -> back()
+                "END" -> open("home")
+            }
+        }
+    }
+    LaunchedEffect(aiStartTick) { if (aiStartTick > 0 && screen == "ai") aiListen() }
+    // Chụp ảnh bằng giọng nói: mở máy ảnh, đợi 3 giây cho người dùng lấy khung rồi tự chụp
+    LaunchedEffect(screen, camOk) {
+        if (screen == "camera" && camOk && aiShoot) {
+            aiShoot = false
+            delay(3000)
+            if (screen == "camera" && camOk) { shutterTick++; takePhoto(ctx, cam) }
+        }
+    }
+    DisposableEffect(screen) { val sc = screen; onDispose { if (sc == "ai") voice.cancel() } }
+    DisposableEffect(Unit) { onDispose { voice.cancel() } }
+
     fun press(k: String) {
         if (buzz) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         if (locked) {   // Menu rồi * để mở khóa
@@ -1210,6 +1387,7 @@ fun Phone() {
             else if (k == "SOFTR" || k == "UP" || k == "DOWN" || k == "LEFT" || k == "RIGHT") screen = delBack
             return
         }
+        if (screen == "ai") { aiPress(k); return }
         val size = when (screen) { "menu" -> MENU.size; "apps" -> maxOf(apps.size, 1); "settings" -> SETTINGS.size; "sound", "volume" -> 3; "clock" -> alarms.size + 1
             "wifi" -> wifiNets.size + 1; "sim" -> simRows(ctx).size; "brightness" -> 1; "battery" -> 3; "storage" -> 3
             "accounts" -> maxOf(Accts.google(ctx).size, 1); "power" -> 2
@@ -1329,7 +1507,7 @@ fun Phone() {
                 "music" -> if (!audioPerms.all { granted(it) }) need(audioPerms) { loadTracks() }
                     else if (tracks.isNotEmpty()) { if (sel == mCur && Music.active) Music.toggle() else playTrack(sel) }
             }
-            "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) }
+            "SOFTR" -> if (screen == "home") { if (dial.isNotEmpty()) dial = dial.dropLast(1) else shortcut("ai") }
                 else if (screen == "compose" && cStage == 0 && cTo.isNotEmpty()) { cTo = cTo.dropLast(1); cName = "" }
                 else if (screen == "compose" && cStage == 1 && entry.text.isNotEmpty()) entry.backspace()
                 else if (screen == "contacts" && entry.text.isNotEmpty()) { entry.backspace(); sel = 0 }
@@ -1393,11 +1571,13 @@ fun Phone() {
         "recorder" -> if (sel == 0) "Ghi" else if (playing != null && playing == recs.getOrNull(sel - 1)?.file?.absolutePath) "Dừng" else "Nghe"
         "alarmEdit" -> if (editField == 3 && editIdx < alarms.size) "Xóa" else "Lưu"
         "calllog" -> "Gọi"
+        "ai" -> when (aiState) { 1 -> "Xong"; 3 -> (if (aiKind == 1) "Gọi" else if (aiKind == 2) "Gửi" else "Soạn"); else -> "Nói" }
         "music" -> if (Music.active && sel == mCur) (if (Music.paused) "Tiếp" else "Tạm dừng") else "Phát"
         else -> ""
     }
     val right = when (screen) {
-        "home" -> if (dial.isEmpty()) "" else "Xóa"
+        "home" -> if (dial.isEmpty()) "AI" else "Xóa"
+        "ai" -> when (aiState) { 1 -> "Hủy"; 3 -> "Không"; else -> "Về" }
         "reset", "recConfirm", "smsConfirm", "galConfirm" -> "Không"
         "compose" -> if ((cStage == 0 && cTo.isNotEmpty()) || (cStage == 1 && entry.text.isNotEmpty())) "Xóa" else "Về"
         "contacts" -> if (entry.text.isNotEmpty()) "Xóa" else "Về"
@@ -1446,6 +1626,7 @@ fun Phone() {
                                 }
                                 Text(dial.takeLast(12), color = INK, fontSize = 48.sp, fontWeight = FontWeight.Bold, fontFamily = MONO, maxLines = 1, overflow = TextOverflow.Clip)
                             }
+                            "ai" -> AiScreen(aiState, aiHeard, aiMsg, aiLevel, aiCands, aiPick, aiKind, aiBody)
                             "menu" -> Lines(MENU.map { it.first }, sel, tapItem, scroll)
                             "apps" -> AppsScreen(apps, appsMode, sel, { appsMode = it }, tapItem, scroll)
                             "clock" -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
