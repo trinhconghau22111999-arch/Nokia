@@ -1553,8 +1553,11 @@ fun Phone() {
         }
     }
 
-    val tapItem: (Int) -> Unit = { i -> sel = i; press("OK") }
-    val scroll: (Int) -> Unit = { d -> press(if (d > 0) "DOWN" else "UP") }
+    // press là hàm cục bộ, mỗi lần vẽ lại là một bản mới (nhớ cShown, cLines... của lần vẽ đó). Bàn phím ảo và danh sách
+    // (pointerInput(Unit)) hay giữ lại bản cũ -> danh bạ lúc đó còn trống nên ▲▼ không đi được. Luôn gọi qua bản mới nhất:
+    val pressNow = rememberUpdatedState<(String) -> Unit>({ k -> press(k) })
+    val tapItem: (Int) -> Unit = { i -> sel = i; pressNow.value("OK") }
+    val scroll: (Int) -> Unit = { d -> pressNow.value(if (d > 0) "DOWN" else "UP") }
 
     SideEffect { NokiaState.listener = { k -> press(k) } }
     BackHandler { if (wallPick != null) wallPick = null else if (!locked) back() }
@@ -1890,7 +1893,7 @@ fun Phone() {
 
             if (!inSplit.value) {
                 Spacer(Modifier.height(6.dp))
-                Keys(::press)
+                Keys { k -> pressNow.value(k) }
             }
         }
     }
