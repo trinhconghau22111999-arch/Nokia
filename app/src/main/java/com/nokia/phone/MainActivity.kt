@@ -1847,9 +1847,7 @@ fun Phone() {
                                 else {
                                     val e = calls.getOrNull(sel)
                                     // Ngày giờ + số hiện ngay dưới ô đang chọn
-                                    val info = if (e == null) emptyList() else listOfNotNull(
-                                        CallHistory.detail(e),
-                                        if (e.name.isNotEmpty() && e.name != e.number) e.number else null)
+                                    val info = if (e == null) emptyList() else listOf(CallHistory.detail(e))   // số nằm ngay sau chữ Đi/Đến/Nhỡ, gộp một dòng
                                     Box(Modifier.weight(1f)) { Lines(calls.map { CallHistory.line(it) }, sel, tapItem, scroll, info) }
                                 }
                             }

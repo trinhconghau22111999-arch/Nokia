@@ -52,10 +52,11 @@ object CallHistory {
     fun line(e: CallEntry): String =
         (when (e.kind) { OUT -> "Gọi đi: "; MISSED -> "Gọi nhỡ: "; else -> "Gọi đến: " }) + e.label
 
-    /** Dòng chi tiết của mục đang chọn: loại, ngày giờ, thời lượng. */
+    /** Dòng chi tiết của mục đang chọn, gộp một dòng: loại, số (khi dòng trên hiện tên), ngày giờ, thời lượng. */
     fun detail(e: CallEntry): String {
         val kind = when (e.kind) { OUT -> "Đi"; MISSED -> "Nhỡ"; else -> "Đến" }
         val at = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(e.date))
-        return kind + "  " + at + if (e.durSec > 0) "  " + mmss(e.durSec * 1000) else ""
+        val num = if (e.name.isNotEmpty() && e.name != e.number && e.number.isNotEmpty()) " " + e.number else ""
+        return kind + num + "  " + at + if (e.durSec > 0) "  " + mmss(e.durSec * 1000) else ""
     }
 }
