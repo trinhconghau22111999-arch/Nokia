@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
  * Mọi hàm phải gọi trên luồng chính; các callback cũng chạy trên luồng chính.
  */
 const val SILENCE_MS = 2000L
+/** Sau khi bấm AI (bộ nhận dạng sẵn sàng), đợi người dùng bắt đầu nói tối đa chừng này; quá thì dừng nghe. */
+const val START_WAIT_MS = 3000L
 /** Mã lỗi riêng: không có mạng và máy chưa tải gói giọng nói tiếng Việt ngoại tuyến. */
 const val ERR_NO_OFFLINE = 9001
 
@@ -46,7 +48,13 @@ class VoiceInput(private val ctx: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private val silenceStop = Runnable { stop() }          // im lặng đủ lâu -> chốt luôn, không chờ bộ nhận dạng
     private fun armSilence() { handler.removeCallbacks(silenceStop); handler.postDelayed(silenceStop, SILENCE_MS) }
-    private fun disarmSilence() { handler.removeCallbacks(silenceStop) }
+    private fun disarmSilence() { handler.removeCallbacks(silenceStop); handler.removeCallbacks(startTimeout) }
+    private var curFail: ((Int) -> Unit)? = null
+    private val startTimeout = Runnable {            // 3 giây từ lúc sẵn sàng mà chưa ai nói -> dừng, báo "Không nghe thấy gì"
+        val f = curFail
+        cancel()
+        f?.invoke(SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+    }
 
     fun available(): Boolean = try { SpeechRecognizer.isRecognitionAvailable(ctx) } catch (_: Throwable) { false }
 
@@ -79,9 +87,10 @@ class VoiceInput(private val ctx: Context) {
         if (r == null) { onError(SpeechRecognizer.ERROR_CLIENT); return }
         rec = r
         val fail = onError   // đặt tên khác để không lẫn với RecognitionListener.onError bên dưới
+        curFail = fail
         r.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() { armSilence() }
+            override fun onReadyForSpeech(params: Bundle?) { handler.removeCallbacks(startTimeout); handler.postDelayed(startTimeout, START_WAIT_MS) }
+            override fun onBeginningOfSpeech() { handler.removeCallbacks(startTimeout); armSilence() }
             override fun onRmsChanged(rmsdB: Float) { onLevel(rmsdB) }
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
@@ -104,6 +113,7 @@ class VoiceInput(private val ctx: Context) {
             override fun onPartialResults(partialResults: Bundle?) {
                 partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let {
                     onPartial(it)
+                    handler.removeCallbacks(startTimeout)
                     armSilence()       // còn đang nói (chữ vẫn thay đổi) -> đếm lại 2 giây
                 }
             }
