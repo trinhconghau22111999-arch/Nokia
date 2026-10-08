@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -31,10 +33,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Nhận dạng giọng nói tiếng Việt bằng SpeechRecognizer của Android (dịch vụ Google trên máy, cần mạng).
+ * Nhận dạng giọng nói tiếng Việt bằng SpeechRecognizer của Android (dịch vụ Google trên máy). Có mạng: dùng nhận dạng trực tuyến như thường;
+ * không có mạng (hoặc lỗi mạng giữa chừng): tự chuyển sang gói giọng nói tiếng Việt ngoại tuyến đã tải về máy.
  * Mọi hàm phải gọi trên luồng chính; các callback cũng chạy trên luồng chính.
  */
 const val SILENCE_MS = 2000L
+/** Mã lỗi riêng: không có mạng và máy chưa tải gói giọng nói tiếng Việt ngoại tuyến. */
+const val ERR_NO_OFFLINE = 9001
 
 class VoiceInput(private val ctx: Context) {
     private var rec: SpeechRecognizer? = null
@@ -45,6 +50,14 @@ class VoiceInput(private val ctx: Context) {
 
     fun available(): Boolean = try { SpeechRecognizer.isRecognitionAvailable(ctx) } catch (_: Throwable) { false }
 
+    /** Có mạng internet đang dùng được không (không xác định được thì coi như có, để giữ hành vi cũ). */
+    private fun online(): Boolean = try {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    } catch (_: Throwable) { true }
+
     fun start(
         onPartial: (String) -> Unit,
         onLevel: (Float) -> Unit,
@@ -52,6 +65,16 @@ class VoiceInput(private val ctx: Context) {
         onError: (Int) -> Unit
     ) {
         cancel()
+        startRec(!online(), onPartial, onLevel, onResult, onError)
+    }
+
+    private fun startRec(
+        offline: Boolean,
+        onPartial: (String) -> Unit,
+        onLevel: (Float) -> Unit,
+        onResult: (List<String>) -> Unit,
+        onError: (Int) -> Unit
+    ) {
         val r = try { SpeechRecognizer.createSpeechRecognizer(ctx) } catch (_: Throwable) { null }
         if (r == null) { onError(SpeechRecognizer.ERROR_CLIENT); return }
         rec = r
@@ -62,7 +85,17 @@ class VoiceInput(private val ctx: Context) {
             override fun onRmsChanged(rmsdB: Float) { onLevel(rmsdB) }
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
-            override fun onError(error: Int) { disarmSilence(); fail(error) }
+            override fun onError(error: Int) {
+                disarmSilence()
+                val netErr = error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
+                    error == SpeechRecognizer.ERROR_SERVER
+                if (!offline && netErr) {
+                    // Mạng chập chờn / máy chủ lỗi -> thử lại một lần bằng gói ngoại tuyến
+                    handler.post { cancel(); startRec(true, onPartial, onLevel, onResult, fail) }
+                } else if (offline && (netErr || error == 12 || error == 13)) {
+                    fail(ERR_NO_OFFLINE)    // chưa có gói tiếng Việt ngoại tuyến trên máy
+                } else fail(error)
+            }
             override fun onResults(results: Bundle?) {
                 disarmSilence()
                 val l = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
@@ -86,6 +119,7 @@ class VoiceInput(private val ctx: Context) {
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, SILENCE_MS)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, SILENCE_MS)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
+            if (offline) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
         try { r.startListening(i) } catch (_: Throwable) { onError(SpeechRecognizer.ERROR_CLIENT) }
     }
@@ -115,6 +149,7 @@ fun youtubeSearchIntent(ctx: Context, pkg: String, q: String): Intent? =
 
 fun aiErrorText(code: Int): String = when (code) {
     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Không nghe thấy gì.\nBấm Nói để thử lại."
+    ERR_NO_OFFLINE -> "Không có mạng và máy chưa có gói giọng nói tiếng Việt ngoại tuyến.\nTải ở: Cài đặt > Google > Nhận dạng giọng nói."
     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Cần có mạng để nhận dạng giọng nói."
     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Chưa cấp quyền Micro cho app."
     SpeechRecognizer.ERROR_AUDIO -> "Micro đang bận hoặc lỗi âm thanh."
