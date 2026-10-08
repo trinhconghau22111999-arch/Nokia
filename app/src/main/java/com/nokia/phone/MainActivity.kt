@@ -1408,7 +1408,7 @@ fun Phone() {
             else -> 1 }
         when (k) {
             "UP", "LEFT" -> when (screen) {
-                "home" -> shortcut(if (k == "UP") "clock" else "calllog")      // ▲ Đồng hồ, ◀ Nhật ký
+                "home" -> shortcut(if (k == "UP") "clock" else "calendar")      // ▲ Đồng hồ, ◀ Lịch
                 "music" -> if (k == "LEFT") musicStep(-1) else sel = maxOf(sel - 1, 0)
                 "snake" -> snake.turn(if (k == "UP") 0 to -1 else -1 to 0)
                 "apps" -> if (appsMode == 1) gridMove(if (k == "UP") -APP_COLS else -1) else sel = maxOf(sel - 1, 0)
@@ -1525,7 +1525,7 @@ fun Phone() {
                 else back()
             "END" -> if (screen == "home") dial = "" else open("home")
             "CALL" -> when (screen) {
-                "home" -> if (dial.isNotEmpty()) callNow(dial)
+                "home" -> if (dial.isNotEmpty()) callNow(dial) else shortcut("calllog")   // chưa gõ số: phím gọi xanh mở Nhật ký
                 "contacts" -> cShown.getOrNull(sel)?.let { callNow(it.number) }
                 "thread", "msgview" -> callNow(dialable(curAddr))
                 "calllog" -> calls.getOrNull(sel)?.let { callNow(it.number) }
