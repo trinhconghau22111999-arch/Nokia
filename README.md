@@ -22,6 +22,7 @@ Launcher thật mô phỏng điện thoại cục gạch Nokia: thân máy + bà
 - **Máy tính:** + − × ÷ = , và ô phép tính lớn ở trên. Phím cứng: số, ▲ cộng, ▼ trừ, ◀ nhân, ▶ chia, OK bằng, `*` dấu phẩy, `#` xóa hết
 - **Máy ảnh:** xem trước ngay trong ô LCD, OK để chụp (ảnh lưu vào Pictures/Nokia), ◀▶ đổi camera trước/sau
 - **Thư viện:** xem ảnh trong máy, ◀▶ hoặc vuốt ngang để chuyển ảnh. Phím mềm trái **Xóa** xóa ảnh đang xem: Android 11 trở lên hệ thống tự hiện hộp thoại xác nhận, bản cũ hơn thì app hỏi "Xóa ảnh này?" (Có / Không). Ảnh đã xóa khỏi bộ nhớ máy thật, không ẩn
+- **Tắt màn hình máy:** bấm phím Tắt (đỏ) 2 lần liên tiếp (lần 1 về màn hình chờ, lần 2 tắt màn hình). Cần bật Trợ năng phonecuibap (Android 9+); chưa bật thì app chỉ khóa màn hình giả và nhắc bật.
 - Màn hình chờ: bấm số + Gọi để gọi; nút Home về màn hình chờ, Back lùi một cấp
 - Chia đôi màn hình + điều khiển app khác bằng Trợ năng (bật trong Cài đặt máy > Trợ năng > phonecuibap)
 
