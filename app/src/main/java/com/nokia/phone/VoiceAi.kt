@@ -170,7 +170,8 @@ object Torch {
 }
 
 val AI_TIPS = listOf(
-    "Gọi cho mẹ / gọi 0912345678 / gọi vào số 094 644 5752",
+    "Gọi cho mẹ",
+    "Gọi vào số 0123456789 (hoặc đọc: không một hai ba bốn năm sáu bảy tám chín)",
     "Nhắn tin cho Nam nội dung tối nay họp",
     "Chụp ảnh / chụp ảnh tự sướng",
     "Mở thư viện / mở máy ảnh",
