@@ -57,6 +57,6 @@ object CallHistory {
         val kind = when (e.kind) { OUT -> "Đi"; MISSED -> "Nhỡ"; else -> "Đến" }
         val at = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(e.date))
         val num = if (e.name.isNotEmpty() && e.name != e.number && e.number.isNotEmpty()) " " + e.number else ""
-        return kind + num + "  " + at + if (e.durSec > 0) "  " + mmss(e.durSec * 1000) else ""
+        return kind + num + "  " + at + if (e.durSec > 0) "  " + mmss(e.durSec * 1000) + "s" else ""
     }
 }
