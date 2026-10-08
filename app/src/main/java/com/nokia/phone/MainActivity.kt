@@ -1195,6 +1195,12 @@ fun Phone() {
     }
 
     // ======================= AI điều khiển bằng giọng nói =======================
+    /** Xong một lệnh AI: báo ngắn bằng Toast (nếu có) rồi về màn hình chính ngay, không dừng ở màn hình kết quả. */
+    fun aiFinish(msg: String = "") {
+        aiState = 0; aiMsg = ""; aiHeard = ""
+        if (msg.isNotBlank()) Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
+        open("home")
+    }
     fun aiOpen(id: String) {
         when (id) {
             "zalo" -> launchPkg("com.zing.zalo", "Zalo")
@@ -1233,7 +1239,7 @@ fun Phone() {
             }
             is AiCmd.Gallery -> open("gallery")
             is AiCmd.Music -> { aiMusicQ = c.query; open("music") }
-            is AiCmd.Open -> { aiMsg = "Đang mở..."; aiOpen(c.id) }
+            is AiCmd.Open -> { if (c.id == "zalo" || c.id == "youtube") open("home"); aiOpen(c.id) }
             is AiCmd.OpenApp -> {
                 val pm = ctx.packageManager
                 val list = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
@@ -1242,23 +1248,23 @@ fun Phone() {
                     .distinctBy { it.pkg }
                 val idx = AiMatch.rank(list.map { plain(it.label) }, c.name)
                 if (idx.isEmpty()) aiMsg = "Không thấy ứng dụng \"${c.name}\""
-                else { val a = list[idx[0]]; aiMsg = "Đang mở ${a.label}"; launchPkg(a.pkg, a.label) }
+                else { val a = list[idx[0]]; open("home"); launchPkg(a.pkg, a.label) }
             }
             is AiCmd.YouTube -> {
                 val (pkg, label) = YouTubeApp.pick(ctx)
                 val i = youtubeSearchIntent(ctx, pkg, c.query)
-                if (i == null) launchPkg(pkg, label)
-                else { aiMsg = "Đang tìm \"${c.query}\"\ntrên $label"; launch(i) }
+                open("home")
+                if (i == null) launchPkg(pkg, label) else launch(i)
             }
             is AiCmd.Volume -> {
                 adjustMusicVol(if (c.up) 1 else -1); adjustMusicVol(if (c.up) 1 else -1)
-                aiMsg = if (c.up) "Đã tăng âm lượng" else "Đã giảm âm lượng"
+                aiFinish(if (c.up) "Đã tăng âm lượng" else "Đã giảm âm lượng")
             }
-            is AiCmd.Torch -> aiMsg = if (Torch.set(ctx, c.on)) (if (c.on) "Đã bật đèn pin" else "Đã tắt đèn pin")
-                else "Không bật được đèn pin\n(máy không có flash hoặc camera đang bận)"
+            is AiCmd.Torch -> aiFinish(if (Torch.set(ctx, c.on)) (if (c.on) "Đã bật đèn pin" else "Đã tắt đèn pin")
+                else "Không bật được đèn pin (máy không có flash hoặc camera đang bận)")
             is AiCmd.Bluetooth -> {
-                if (isBtOn(ctx) == c.on) aiMsg = "Bluetooth đã " + (if (c.on) "bật" else "tắt") + " rồi"
-                else { toggleBt(); aiMsg = "Đang " + (if (c.on) "bật" else "tắt") + " Bluetooth" }
+                if (isBtOn(ctx) == c.on) aiFinish("Bluetooth đã " + (if (c.on) "bật" else "tắt") + " rồi")
+                else { toggleBt(); aiFinish("Đang " + (if (c.on) "bật" else "tắt") + " Bluetooth") }
             }
             is AiCmd.SetAlarm -> {
                 if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS))
@@ -1268,14 +1274,14 @@ fun Phone() {
                 AlarmStore.save(ctx, l)
                 AlarmStore.schedule(ctx, l)
                 val min = ((AlarmStore.nextTrigger(c.h, c.m) - System.currentTimeMillis() + 59_999L) / 60_000L).toInt()
-                aiMsg = "Đã đặt báo thức %02d:%02d\n(sau %s%d phút)".format(c.h, c.m, if (min >= 60) "${min / 60} giờ " else "", min % 60)
+                aiFinish("Đã đặt báo thức %02d:%02d (sau %s%d phút)".format(c.h, c.m, if (min >= 60) "${min / 60} giờ " else "", min % 60))
                 if (Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)) askIgnoreBatteryOnce(ctx)
             }
             is AiCmd.Lock -> { open("home"); locked = true; lockAt = 0L }
-            is AiCmd.Time -> { val cal = Calendar.getInstance(); aiMsg = "Bây giờ là ${cal.get(Calendar.HOUR_OF_DAY)} giờ ${cal.get(Calendar.MINUTE)} phút" }
-            is AiCmd.Date -> aiMsg = "Hôm nay là\n" + dateNow()
+            is AiCmd.Time -> { val cal = Calendar.getInstance(); aiFinish("Bây giờ là ${cal.get(Calendar.HOUR_OF_DAY)} giờ ${cal.get(Calendar.MINUTE)} phút") }
+            is AiCmd.Date -> aiFinish("Hôm nay là " + dateNow())
             is AiCmd.Help -> aiMsg = ""     // hiện lại danh sách câu ví dụ
-            is AiCmd.Cancel -> aiMsg = "Đã hủy"
+            is AiCmd.Cancel -> aiFinish()
             is AiCmd.Unknown -> aiMsg = "Chưa hiểu lệnh này.\nHãy nói rõ hơn, ví dụ:\n\"gọi cho mẹ\""
         }
     }
@@ -1307,11 +1313,10 @@ fun Phone() {
     fun aiConfirm() {
         val p = aiCands.getOrNull(aiPick) ?: return
         when (aiKind) {
-            1 -> { aiState = 4; aiMsg = "Đang gọi ${p.name}..."; callNow(p.number) }
+            1 -> { aiFinish(); callNow(p.number) }
             2 -> need(listOf(Manifest.permission.SEND_SMS)) {
                 val ok = SmsRepo.send(ctx, p.number, aiBody)
-                aiState = 4
-                aiMsg = if (ok) "Đã gửi tin cho ${p.name}" else "Gửi tin không được"
+                aiFinish(if (ok) "Đã gửi tin cho ${p.name}" else "Gửi tin không được")
             }
             else -> startCompose(p.number, p.name, "new")
         }
@@ -1328,7 +1333,7 @@ fun Phone() {
                 "CALL" -> if (aiKind == 1) aiConfirm()
                 "UP", "LEFT" -> aiPick = maxOf(aiPick - 1, 0)
                 "DOWN", "RIGHT" -> aiPick = minOf(aiPick + 1, maxOf(aiCands.lastIndex, 0))
-                "SOFTR" -> { aiState = 4; aiMsg = "Đã hủy" }
+                "SOFTR" -> aiFinish()
                 "END" -> open("home")
             }
             else -> when (k) {
