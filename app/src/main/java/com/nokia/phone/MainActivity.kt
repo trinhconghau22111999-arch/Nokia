@@ -491,7 +491,7 @@ fun Phone() {
     var fromHome by remember { mutableStateOf(false) }                  // app mở bằng phím mũi tên từ màn hình chờ -> Về = màn hình chờ
     // ---- AI giọng nói: 0 rảnh, 1 đang nghe, 3 chờ xác nhận, 4 hiện kết quả / lỗi
     var aiState by remember { mutableIntStateOf(0) }                    // 5 = màn hình hướng dẫn (bấm ← 2 lần ở màn hình chờ)
-    var endAt by remember { mutableStateOf(0L) }                       // lần bấm phím Tắt (đỏ) gần nhất, để nhận biết bấm 2 lần = tắt màn hình máy
+    var endAt by remember { mutableStateOf(0L) }                       // lần bấm phím Tắt (đỏ) gần nhất, để nhận biết bấm 2 lần = khóa màn hình của app
     var aiOpenedAt by remember { mutableStateOf(0L) }                  // lúc mở màn hình AI, để nhận biết bấm ← 2 lần liên tiếp
     var aiHeard by remember { mutableStateOf("") }
     var aiMsg by remember { mutableStateOf("") }
@@ -1360,21 +1360,13 @@ fun Phone() {
     DisposableEffect(screen) { val sc = screen; onDispose { if (sc == "ai") voice.cancel() } }
     DisposableEffect(Unit) { onDispose { voice.cancel() } }
 
-    /** Tắt màn hình máy (khóa máy). Cần bật Trợ năng phonecuibap (Android 9+); chưa bật thì chỉ khóa trong app và nhắc bật. */
-    fun screenOff() {
-        val ok = NokiaAccessibilityService.instance?.lockScreen() == true
-        if (!ok) {
-            Toast.makeText(ctx, "Bật Trợ năng phonecuibap để tắt được màn hình máy", Toast.LENGTH_LONG).show()
-            locked = true; lockAt = 0L
-        }
-    }
     fun press(k: String) {
         if (buzz) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        if (k == "END" && !locked) {   // bấm phím Tắt 2 lần liên tiếp: lần 1 về màn hình chờ, lần 2 tắt màn hình máy
+        if (k == "END" && !locked) {   // bấm phím Tắt 2 lần liên tiếp: lần 1 về màn hình chờ, lần 2 khóa màn hình của app
             val t = SystemClock.uptimeMillis()
             val dbl = t - endAt < 600
             endAt = if (dbl) 0L else t
-            if (dbl && screen == "home") { screenOff(); return }
+            if (dbl && screen == "home") { locked = true; lockAt = 0L; return }
         }
         if (locked) {   // Menu rồi * để mở khóa
             val t = SystemClock.uptimeMillis()
