@@ -490,7 +490,8 @@ fun Phone() {
     var mTick by remember { mutableIntStateOf(0) }
     var fromHome by remember { mutableStateOf(false) }                  // app mở bằng phím mũi tên từ màn hình chờ -> Về = màn hình chờ
     // ---- AI giọng nói: 0 rảnh, 1 đang nghe, 3 chờ xác nhận, 4 hiện kết quả / lỗi
-    var aiState by remember { mutableIntStateOf(0) }
+    var aiState by remember { mutableIntStateOf(0) }                    // 5 = màn hình hướng dẫn (bấm ← 2 lần ở màn hình chờ)
+    var aiOpenedAt by remember { mutableStateOf(0L) }                  // lúc mở màn hình AI, để nhận biết bấm ← 2 lần liên tiếp
     var aiHeard by remember { mutableStateOf("") }
     var aiMsg by remember { mutableStateOf("") }
     var aiLevel by remember { mutableFloatStateOf(0f) }
@@ -1140,7 +1141,7 @@ fun Phone() {
         if (s != "camera") aiShoot = false
         screen = s; sel = 0; monthOffset = 0
         when (s) {
-            "ai" -> { aiState = 0; aiHeard = ""; aiMsg = ""; aiStartTick++ }
+            "ai" -> { aiState = 0; aiHeard = ""; aiMsg = ""; aiOpenedAt = SystemClock.uptimeMillis(); aiStartTick++ }
             "snake" -> snake.reset()
             "apps" -> loadApps()
             "sound" -> refreshSoundNames()
@@ -1321,11 +1322,14 @@ fun Phone() {
             else -> startCompose(p.number, p.name, "new")
         }
     }
+    /** Màn hình hướng dẫn dùng AI. */
+    fun aiGuide() { voice.cancel(); aiState = 5; aiMsg = ""; aiHeard = "" }
     fun aiPress(k: String) {
+        val dbl = aiState != 5 && SystemClock.uptimeMillis() - aiOpenedAt < 800     // ← bấm lần 2 ngay sau lần 1 ở màn hình chờ
         when (aiState) {
             1 -> when (k) {
                 "OK", "SOFTL" -> voice.stop()                                   // nói xong sớm
-                "SOFTR" -> { aiState = 0; aiMsg = ""; aiHeard = ""; voice.cancel() }
+                "SOFTR" -> if (dbl) aiGuide() else { aiState = 0; aiMsg = ""; aiHeard = ""; voice.cancel() }
                 "END" -> { aiState = 0; voice.cancel(); open("home") }
             }
             3 -> when (k) {
@@ -1338,12 +1342,12 @@ fun Phone() {
             }
             else -> when (k) {
                 "OK", "SOFTL" -> aiListen()
-                "SOFTR" -> back()
+                "SOFTR" -> if (dbl) aiGuide() else back()
                 "END" -> open("home")
             }
         }
     }
-    LaunchedEffect(aiStartTick) { if (aiStartTick > 0 && screen == "ai") aiListen() }
+    LaunchedEffect(aiStartTick) { if (aiStartTick > 0 && screen == "ai" && aiState != 5) aiListen() }
     // Chụp ảnh bằng giọng nói: mở máy ảnh, đợi 3 giây cho người dùng lấy khung rồi tự chụp
     LaunchedEffect(screen, camOk) {
         if (screen == "camera" && camOk && aiShoot) {

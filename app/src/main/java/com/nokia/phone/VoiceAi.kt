@@ -169,6 +169,21 @@ object Torch {
     } catch (_: Throwable) { false }
 }
 
+val AI_TIPS = listOf(
+    "Gọi cho mẹ / gọi 0912345678 / gọi vào số 094 644 5752",
+    "Nhắn tin cho Nam nội dung tối nay họp",
+    "Chụp ảnh / chụp ảnh tự sướng",
+    "Mở thư viện / mở máy ảnh",
+    "Mở bài Hãy trao cho anh",
+    "Phát nhạc của Sơn Tùng",
+    "Đặt báo thức 6 giờ 30",
+    "Đặt báo thức sau 20 phút",
+    "Mở Zalo / mở YouTube / mở Facebook",
+    "Mở danh bạ / tin nhắn / lịch",
+    "Bật đèn pin / tăng âm lượng",
+    "Bây giờ là mấy giờ?"
+)
+
 /**
  * Màn hình AI trên LCD.
  * state: 0 = rảnh, 1 = đang nghe, 3 = chờ xác nhận (gọi / nhắn), 4 = hiện kết quả / lỗi.
@@ -214,6 +229,10 @@ fun AiScreen(
                         textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
+            5 -> Column(Modifier.fillMaxSize().padding(horizontal = 6.dp).verticalScroll(rememberScrollState())) {
+                Text("Bấm OK rồi nói, ví dụ:", color = INK, fontSize = 13.sp, fontFamily = MONO, fontWeight = FontWeight.Bold)
+                AI_TIPS.forEach { Text("• $it", color = INK, fontSize = 12.sp, fontFamily = MONO) }
+            }
             else -> Column(Modifier.fillMaxSize().padding(horizontal = 6.dp).verticalScroll(rememberScrollState())) {
                 if (msg.isNotEmpty()) {
                     if (heard.isNotEmpty()) Text("Bạn nói: $heard", color = INK, fontSize = 12.sp, fontFamily = MONO)
@@ -224,6 +243,8 @@ fun AiScreen(
                 } else {
                     Text("Bấm OK rồi nói", Modifier.fillMaxWidth().padding(top = 24.dp), color = INK, fontSize = 18.sp,
                         fontFamily = MONO, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Text("Bấm ← 2 lần ở màn hình chờ: xem hướng dẫn", Modifier.fillMaxWidth().padding(top = 10.dp), color = INK,
+                        fontSize = 11.sp, fontFamily = MONO, textAlign = TextAlign.Center)
                 }
             }
         }
